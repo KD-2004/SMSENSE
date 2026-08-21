@@ -1,0 +1,17 @@
+[
+  {
+    "id": "seed-001",
+    "label": "demo_seed",
+    "text": "Your account will be blocked. Verify KYC immediately using this link."
+  },
+  {
+    "id": "seed-002",
+    "label": "demo_seed",
+    "text": "Congratulations, you won a reward. Pay a registration fee to claim your prize."
+  },
+  {
+    "id": "seed-003",
+    "label": "demo_seed",
+    "text": "Share your OTP and PIN to complete the bank verification."
+  }
+]

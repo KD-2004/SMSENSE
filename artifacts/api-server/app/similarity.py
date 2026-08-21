@@ -1,4 +1,3 @@
-import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -20,14 +19,23 @@ class SimilarityStore:
             self.faiss = None
 
     def status(self) -> tuple[bool, str]:
-        return (True, "FAISS available") if self.available else (False, "faiss-cpu is not installed; similarity is unavailable")
+        if not self.available:
+            return False, "faiss-cpu is not installed; similarity is unavailable"
+        if not self.index_path.exists():
+            return False, f"FAISS is installed but the index is missing at {self.index_path}; similarity is unavailable"
+        try:
+            index = self.faiss.read_index(str(self.index_path))
+            if index.ntotal == 0:
+                return False, f"FAISS index exists but is empty at {self.index_path}; similarity is unavailable"
+            return True, f"FAISS index loaded with {index.ntotal} scam-example vectors"
+        except Exception as exc:
+            return False, f"FAISS index could not be loaded: {type(exc).__name__}"
 
     async def search(self, raw: str, normalized: str, ollama: OllamaClient) -> dict[str, Any]:
-        if not self.available:
-            return {"available": False, "matches": [], "detail": self.status()[1]}
+        index_status, index_detail = self.status()
+        if not index_status:
+            return {"available": False, "matches": [], "detail": index_detail}
         embedding = await ollama.embed(f"raw: {raw}\nnormalized: {normalized}")
-        if not self.index_path.exists():
-            return {"available": True, "matches": [], "detail": "FAISS index has no seeded scam examples"}
         index = self.faiss.read_index(str(self.index_path))
         import numpy as np  # type: ignore
         vector = np.asarray([embedding], dtype="float32")

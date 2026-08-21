@@ -1,0 +1,88 @@
+Now configure and validate the REAL AI runtime for BharatPhish Guard.
+
+Do not change the existing architecture or API contract.
+
+Goal:
+Make the existing backend use the actual pretrained models instead of mock/unavailable model states.
+
+1. OLLAMA
+- Verify Ollama connectivity.
+- Configure the backend to use:
+  - qwen3:8b
+  - qwen3-embedding:0.6b
+- Do not download duplicate models under different names.
+- Add clear startup/health diagnostics showing whether each model is available.
+- Qwen3 8B must remain POST-HOC ONLY and must never modify the risk score or verdict.
+
+2. HUGGING FACE
+Configure the existing lazy adapters to load:
+- Keshav0av/HinSpam-spam-detection
+- tanishqmudaliar/SilverGuard
+
+Use the documented input formats.
+HinSpam receives the raw SMS text.
+SilverGuard receives sender/header + raw SMS when sender/header exists.
+
+Do not pass normalized text as the primary SilverGuard input.
+
+3. FAISS
+- Install/configure FAISS.
+- Create a local FAISS index for scam-example similarity.
+- If the index is empty, report similarity as unavailable rather than inventing a score.
+- Add a small seed knowledge base only if it is clearly labeled as seed/demo data.
+
+4. MODEL FAILURE BEHAVIOR
+Keep fail-closed behavior.
+If any model is unavailable:
+- Do not invent a score.
+- Clearly expose which component is unavailable.
+- Return a proper 503 where appropriate.
+
+5. TESTS
+Add integration tests that verify:
+- HinSpam loads successfully when configured.
+- SilverGuard loads successfully when configured.
+- Ollama Qwen3 responds successfully when configured.
+- Qwen3 embedding responds successfully.
+- FAISS search works.
+- /api/health reports accurate component status.
+- /api/analyze returns a real result when all components are available.
+
+6. TEST THESE REAL MESSAGES
+A. "KYC upd8 kro warna account blck hoga"
+B. "Your OTP for login is 4821. Do not share it with anyone."
+C. "Your account will be blocked. Verify KYC immediately."
+D. "Kal class 10 baje hai"
+
+For each, log:
+- HinSpam output
+- SilverGuard output
+- URL evidence
+- sender evidence
+- behavior evidence
+- obfuscation evidence
+- similarity result
+- final rule-based score
+- final label
+- Qwen explanation
+
+7. IMPORTANT
+Do not change the 6 evidence groups:
+- Content
+- Sender
+- URL
+- Behavior
+- Obfuscation
+- Similarity
+
+Do not add a machine-learning meta-classifier.
+Fusion must remain rule-based and capped.
+
+8. FINAL REPORT
+When finished, show:
+- exact model loading status
+- exact Ollama model status
+- FAISS status
+- one real /api/analyze response
+- test results
+- any remaining blockers

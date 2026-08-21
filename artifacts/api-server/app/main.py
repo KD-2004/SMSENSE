@@ -16,17 +16,39 @@ service = AnalysisService()
 storage = Storage()
 
 
+@app.on_event("startup")
+async def startup_diagnostics() -> None:
+    package_ok, package_detail = service.hf.package_status()
+    faiss_ok, faiss_detail = service.similarity.status()
+    logger.info("Configured Ollama chat model: %s", settings.ollama_chat_model)
+    logger.info("Configured Ollama embedding model: %s", settings.ollama_embedding_model)
+    logger.info("Configured HinSpam model: %s", settings.hinspam_model)
+    logger.info("Configured SilverGuard model: %s", settings.silverguard_model)
+    logger.info("Hugging Face runtime package: available=%s detail=%s", package_ok, package_detail)
+    logger.info("FAISS runtime: available=%s detail=%s", faiss_ok, faiss_detail)
+
+
 @app.get("/api/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     ollama_ok, ollama_detail = await service.ollama.status()
-    hf_ok, hf_detail = service.hf.status()
+    ollama_chat_ok, ollama_chat_detail = await service.ollama.model_status(settings.ollama_chat_model)
+    ollama_embedding_ok, ollama_embedding_detail = await service.ollama.model_status(settings.ollama_embedding_model)
+    hf_status = await service.hf.detailed_status()
     faiss_ok, faiss_detail = service.similarity.status()
     try:
         storage.stats()
         sqlite_ok, sqlite_detail = True, "SQLite is writable"
     except Exception as exc:
         sqlite_ok, sqlite_detail = False, f"SQLite unavailable: {type(exc).__name__}"
-    components = {"ollama": {"available": ollama_ok, "detail": ollama_detail}, "hugging_face": {"available": hf_ok, "detail": hf_detail}, "faiss": {"available": faiss_ok, "detail": faiss_detail}, "sqlite": {"available": sqlite_ok, "detail": sqlite_detail}}
+    components = {
+        "ollama": {"available": ollama_ok, "detail": ollama_detail},
+        "ollama_chat_qwen3_8b": {"available": ollama_chat_ok, "detail": ollama_chat_detail},
+        "ollama_embedding_qwen3_0_6b": {"available": ollama_embedding_ok, "detail": ollama_embedding_detail},
+        "hugging_face_hinspam": {"available": hf_status["hinspam"][0], "detail": hf_status["hinspam"][1]},
+        "hugging_face_silverguard": {"available": hf_status["silverguard"][0], "detail": hf_status["silverguard"][1]},
+        "faiss": {"available": faiss_ok, "detail": faiss_detail},
+        "sqlite": {"available": sqlite_ok, "detail": sqlite_detail},
+    }
     return HealthResponse(status="ok" if all(item["available"] for item in components.values()) else "degraded", components=components)
 
 
