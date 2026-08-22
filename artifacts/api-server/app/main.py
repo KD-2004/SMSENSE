@@ -1,110 +1,747 @@
+from __future__ import annotations
+
 import logging
 import os
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+
 from .config import settings
 from .models import ModelUnavailableError
-from .schemas import AdversarialRequest, AdversarialResponse, AnalysisResponse, AnalyzeRequest, FeedbackRequest, HealthResponse
+from .schemas import (
+    AdversarialRequest,
+    AdversarialResponse,
+    AnalysisResponse,
+    AnalyzeRequest,
+    FeedbackRequest,
+    HealthResponse,
+)
 from .service import AnalysisService
 from .storage import Storage
 
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
-logger = logging.getLogger("bharatphish_guard")
-app = FastAPI(title="BharatPhish Guard API", version="1.0.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# ============================================================
+# LOGGING
+# ============================================================
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format=(
+        "%(asctime)s "
+        "%(levelname)s "
+        "%(name)s "
+        "%(message)s"
+    ),
+)
+
+logger = logging.getLogger("smsense")
+
+
+# ============================================================
+# FASTAPI APPLICATION
+# ============================================================
+
+app = FastAPI(
+    title="SMSense API",
+    description=(
+        "AI-assisted SMS threat intelligence and "
+        "vernacular phishing detection API."
+    ),
+    version="1.0.0",
+)
+
+
+# ============================================================
+# CORS
+# ============================================================
+#
+# Hackathon/local prototype configuration.
+#
+# IMPORTANT:
+# - The browser frontend is allowed to call the API.
+# - We intentionally use allow_credentials=False because
+#   this API is not using browser cookies/auth sessions.
+#
+# For production, replace "*" with the actual frontend origin.
+# ============================================================
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ============================================================
+# SERVICES
+# ============================================================
+
 service = AnalysisService()
 storage = Storage()
 
 
+# ============================================================
+# STARTUP DIAGNOSTICS
+# ============================================================
+
 @app.on_event("startup")
 async def startup_diagnostics() -> None:
-    package_ok, package_detail = service.hf.package_status()
-    faiss_ok, faiss_detail = service.similarity.status()
-    logger.info("Configured Ollama chat model: %s", settings.ollama_chat_model)
-    logger.info("Configured Ollama embedding model: %s", settings.ollama_embedding_model)
-    logger.info("Configured HinSpam model: %s", settings.hinspam_model)
-    logger.info("Configured SilverGuard model: %s", settings.silverguard_model)
-    logger.info("Hugging Face runtime package: available=%s detail=%s", package_ok, package_detail)
-    logger.info("FAISS runtime: available=%s detail=%s", faiss_ok, faiss_detail)
+    """
+    Log the configured detection stack at startup.
+
+    This does not fabricate availability.
+    Each component reports its actual runtime state.
+    """
+
+    try:
+        package_ok, package_detail = (
+            service.hf.package_status()
+        )
+    except Exception as exc:
+        package_ok = False
+        package_detail = (
+            f"HF status check failed: {type(exc).__name__}"
+        )
+
+    try:
+        faiss_ok, faiss_detail = (
+            service.similarity.status()
+        )
+    except Exception as exc:
+        faiss_ok = False
+        faiss_detail = (
+            f"FAISS status check failed: {type(exc).__name__}"
+        )
+
+    logger.info(
+        "SMSense API starting"
+    )
+
+    logger.info(
+        "Configured Ollama chat model: %s",
+        settings.ollama_chat_model,
+    )
+
+    logger.info(
+        "Configured Ollama embedding model: %s",
+        settings.ollama_embedding_model,
+    )
+
+    logger.info(
+        "Configured HinSpam model: %s",
+        settings.hinspam_model,
+    )
+
+    logger.info(
+        "Configured SilverGuard model: %s",
+        settings.silverguard_model,
+    )
+
+    logger.info(
+        "Hugging Face runtime: available=%s detail=%s",
+        package_ok,
+        package_detail,
+    )
+
+    logger.info(
+        "FAISS runtime: available=%s detail=%s",
+        faiss_ok,
+        faiss_detail,
+    )
 
 
-@app.get("/api/health", response_model=HealthResponse)
+# ============================================================
+# HEALTH
+# ============================================================
+
+@app.get(
+    "/api/health",
+    response_model=HealthResponse,
+)
 async def health() -> HealthResponse:
-    ollama_ok, ollama_detail = await service.ollama.status()
-    ollama_chat_ok, ollama_chat_detail = await service.ollama.model_status(settings.ollama_chat_model)
-    ollama_embedding_ok, ollama_embedding_detail = await service.ollama.model_status(settings.ollama_embedding_model)
-    hf_status = await service.hf.detailed_status()
-    faiss_ok, faiss_detail = service.similarity.status()
+    """
+    Detailed component health.
+
+    Used by:
+        - SMSense System Health page
+        - debugging
+        - deployment verification
+    """
+
+    # --------------------------------------------------------
+    # Ollama
+    # --------------------------------------------------------
+
+    try:
+        ollama_ok, ollama_detail = (
+            await service.ollama.status()
+        )
+    except Exception as exc:
+        ollama_ok = False
+        ollama_detail = (
+            f"Ollama status check failed: "
+            f"{type(exc).__name__}"
+        )
+
+    # --------------------------------------------------------
+    # Qwen3 8B
+    # --------------------------------------------------------
+
+    try:
+        (
+            ollama_chat_ok,
+            ollama_chat_detail,
+        ) = await service.ollama.model_status(
+            settings.ollama_chat_model
+        )
+    except Exception as exc:
+        ollama_chat_ok = False
+        ollama_chat_detail = (
+            f"Chat model status check failed: "
+            f"{type(exc).__name__}"
+        )
+
+    # --------------------------------------------------------
+    # Qwen3 Embedding
+    # --------------------------------------------------------
+
+    try:
+        (
+            ollama_embedding_ok,
+            ollama_embedding_detail,
+        ) = await service.ollama.model_status(
+            settings.ollama_embedding_model
+        )
+    except Exception as exc:
+        ollama_embedding_ok = False
+        ollama_embedding_detail = (
+            f"Embedding model status check failed: "
+            f"{type(exc).__name__}"
+        )
+
+    # --------------------------------------------------------
+    # Hugging Face models
+    # --------------------------------------------------------
+
+    try:
+        hf_status = (
+            await service.hf.detailed_status()
+        )
+    except Exception as exc:
+        hf_status = {
+            "hinspam": (
+                False,
+                f"Status check failed: {type(exc).__name__}",
+            ),
+            "silverguard": (
+                False,
+                f"Status check failed: {type(exc).__name__}",
+            ),
+        }
+
+    # --------------------------------------------------------
+    # FAISS
+    # --------------------------------------------------------
+
+    try:
+        faiss_ok, faiss_detail = (
+            service.similarity.status()
+        )
+    except Exception as exc:
+        faiss_ok = False
+        faiss_detail = (
+            f"FAISS status check failed: "
+            f"{type(exc).__name__}"
+        )
+
+    # --------------------------------------------------------
+    # SQLite
+    # --------------------------------------------------------
+
     try:
         storage.stats()
-        sqlite_ok, sqlite_detail = True, "SQLite is writable"
-    except Exception as exc:
-        sqlite_ok, sqlite_detail = False, f"SQLite unavailable: {type(exc).__name__}"
-    components = {
-        "ollama": {"available": ollama_ok, "detail": ollama_detail},
-        "ollama_chat_qwen3_8b": {"available": ollama_chat_ok, "detail": ollama_chat_detail},
-        "ollama_embedding_qwen3_0_6b": {"available": ollama_embedding_ok, "detail": ollama_embedding_detail},
-        "hugging_face_hinspam": {"available": hf_status["hinspam"][0], "detail": hf_status["hinspam"][1]},
-        "hugging_face_silverguard": {"available": hf_status["silverguard"][0], "detail": hf_status["silverguard"][1]},
-        "faiss": {"available": faiss_ok, "detail": faiss_detail},
-        "sqlite": {"available": sqlite_ok, "detail": sqlite_detail},
-    }
-    return HealthResponse(status="ok" if all(item["available"] for item in components.values()) else "degraded", components=components)
 
+        sqlite_ok = True
+        sqlite_detail = "SQLite is writable"
+
+    except Exception as exc:
+        sqlite_ok = False
+        sqlite_detail = (
+            f"SQLite unavailable: "
+            f"{type(exc).__name__}"
+        )
+
+    # --------------------------------------------------------
+    # Components
+    # --------------------------------------------------------
+
+    components = {
+        "ollama": {
+            "available": ollama_ok,
+            "detail": ollama_detail,
+        },
+
+        "ollama_chat_qwen3_8b": {
+            "available": ollama_chat_ok,
+            "detail": ollama_chat_detail,
+        },
+
+        "ollama_embedding_qwen3_0_6b": {
+            "available": ollama_embedding_ok,
+            "detail": ollama_embedding_detail,
+        },
+
+        "hugging_face_hinspam": {
+            "available": hf_status["hinspam"][0],
+            "detail": hf_status["hinspam"][1],
+        },
+
+        "hugging_face_silverguard": {
+            "available": hf_status["silverguard"][0],
+            "detail": hf_status["silverguard"][1],
+        },
+
+        "faiss": {
+            "available": faiss_ok,
+            "detail": faiss_detail,
+        },
+
+        "sqlite": {
+            "available": sqlite_ok,
+            "detail": sqlite_detail,
+        },
+    }
+
+    overall_ok = all(
+        bool(component["available"])
+        for component in components.values()
+    )
+
+    return HealthResponse(
+        status=(
+            "ok"
+            if overall_ok
+            else "degraded"
+        ),
+        components=components,
+    )
+
+
+# ============================================================
+# LIGHTWEIGHT HEALTH CHECK
+# ============================================================
 
 @app.get("/api/healthz")
 async def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+    """
+    Fast endpoint used by the frontend to determine whether
+    the API server itself is reachable.
+    """
+
+    return {
+        "status": "ok"
+    }
 
 
-@app.post("/api/analyze", response_model=AnalysisResponse)
-async def analyze(request: AnalyzeRequest) -> AnalysisResponse:
+# ============================================================
+# ANALYZE MESSAGE
+# ============================================================
+
+@app.post(
+    "/api/analyze",
+    response_model=AnalysisResponse,
+)
+async def analyze(
+    request: AnalyzeRequest,
+) -> AnalysisResponse:
+    """
+    Analyze a single SMS.
+
+    Important:
+    - The backend is authoritative for the risk score.
+    - The frontend does not calculate detection logic.
+    """
+
     try:
-        result = await service.analyze(request.message, request.sender, request.timestamp, post_hoc=True)
+
+        result = await service.analyze(
+            request.message,
+            request.sender,
+            request.timestamp,
+            post_hoc=True,
+        )
+
     except ModelUnavailableError as exc:
-        raise HTTPException(status_code=503, detail={"code": "MODEL_UNAVAILABLE", "message": str(exc), "hint": "Install/load the configured pretrained models and retry; no security result was fabricated."}) from exc
-    analysis_id = storage.save_analysis(result)
-    return AnalysisResponse(id=analysis_id, **result)
+
+        logger.error(
+            "Model unavailable during analysis: %s",
+            exc,
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "MODEL_UNAVAILABLE",
+                "message": str(exc),
+                "hint": (
+                    "Verify that the configured pretrained "
+                    "models and Ollama services are available. "
+                    "No fabricated security result was returned."
+                ),
+            },
+        ) from exc
+
+    except Exception as exc:
+
+        logger.exception(
+            "Unexpected analysis failure"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "ANALYSIS_ERROR",
+                "message": (
+                    "The SMS analysis could not be completed."
+                ),
+            },
+        ) from exc
+
+    # --------------------------------------------------------
+    # Store completed analysis
+    # --------------------------------------------------------
+
+    try:
+
+        analysis_id = storage.save_analysis(
+            result
+        )
+
+    except Exception as exc:
+
+        logger.exception(
+            "Failed to save analysis"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "STORAGE_ERROR",
+                "message": (
+                    "Analysis completed but could not "
+                    "be stored in history."
+                ),
+            },
+        ) from exc
+
+    return AnalysisResponse(
+        id=analysis_id,
+        **result,
+    )
 
 
-@app.post("/api/adversarial-test", response_model=AdversarialResponse)
-async def adversarial_test(request: AdversarialRequest) -> AdversarialResponse:
+# ============================================================
+# ADVERSARIAL TEST
+# ============================================================
+
+@app.post(
+    "/api/adversarial-test",
+    response_model=AdversarialResponse,
+)
+async def adversarial_test(
+    request: AdversarialRequest,
+) -> AdversarialResponse:
+    """
+    Analyze multiple message variants.
+
+    Used by the SMSense Adversarial Test page.
+
+    The endpoint deliberately does not save every adversarial
+    test as normal history unless the backend service itself
+    changes that behavior.
+    """
+
     results = []
-    try:
-        for item in request.messages:
-            result = await service.analyze(item.message, item.sender, item.timestamp, post_hoc=False)
-            results.append(AnalysisResponse(**result))
-    except ModelUnavailableError as exc:
-        raise HTTPException(status_code=503, detail={"code": "MODEL_UNAVAILABLE", "message": str(exc)}) from exc
-    return AdversarialResponse(results=results, invariants=["raw_message is preserved exactly", "post-hoc explanation cannot alter score or label"])
 
+    try:
+
+        for item in request.messages:
+
+            result = await service.analyze(
+                item.message,
+                item.sender,
+                item.timestamp,
+                post_hoc=False,
+            )
+
+            results.append(
+                AnalysisResponse(
+                    **result
+                )
+            )
+
+    except ModelUnavailableError as exc:
+
+        logger.error(
+            "Model unavailable during adversarial test: %s",
+            exc,
+        )
+
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "MODEL_UNAVAILABLE",
+                "message": str(exc),
+            },
+        ) from exc
+
+    except Exception as exc:
+
+        logger.exception(
+            "Unexpected adversarial test failure"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "ADVERSARIAL_TEST_ERROR",
+                "message": (
+                    "The adversarial test could not be completed."
+                ),
+            },
+        ) from exc
+
+    return AdversarialResponse(
+        results=results,
+        invariants=[
+            "raw_message is preserved exactly",
+            "normalization does not replace raw message",
+            "post-hoc explanation cannot alter score or label",
+        ],
+    )
+
+
+# ============================================================
+# HISTORY
+# ============================================================
 
 @app.get("/api/history")
-async def history(limit: int = Query(default=50, ge=1, le=500)) -> list[dict]:
-    return storage.history(limit)
+async def history(
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=500,
+    ),
+) -> list[dict]:
+    """
+    Return recent stored analyses.
+
+    Frontend can request:
+        /api/history?limit=500
+    """
+
+    try:
+        return storage.history(limit)
+
+    except Exception as exc:
+
+        logger.exception(
+            "Failed to load history"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "HISTORY_ERROR",
+                "message": (
+                    "Analysis history could not be loaded."
+                ),
+            },
+        ) from exc
 
 
-@app.get("/api/history/{analysis_id}")
-async def history_detail(analysis_id: int) -> dict:
-    result = storage.get(analysis_id)
+# ============================================================
+# HISTORY DETAIL
+# ============================================================
+
+@app.get(
+    "/api/history/{analysis_id}"
+)
+async def history_detail(
+    analysis_id: int,
+) -> dict:
+    """
+    Return one complete analysis.
+    """
+
+    try:
+
+        result = storage.get(
+            analysis_id
+        )
+
+    except Exception as exc:
+
+        logger.exception(
+            "Failed to load analysis %s",
+            analysis_id,
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "HISTORY_DETAIL_ERROR",
+                "message": (
+                    "The requested analysis "
+                    "could not be loaded."
+                ),
+            },
+        ) from exc
+
     if result is None:
-        raise HTTPException(status_code=404, detail="Analysis not found")
+
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ANALYSIS_NOT_FOUND",
+                "message": "Analysis not found.",
+            },
+        )
+
     return result
 
 
+# ============================================================
+# STATS
+# ============================================================
+
 @app.get("/api/stats")
 async def stats() -> dict:
-    return storage.stats()
+    """
+    Return aggregate statistics.
 
+    This endpoint should eventually be the primary source for
+    dashboard aggregate numbers.
+
+    The frontend can also calculate temporary prototype
+    statistics directly from /api/history.
+    """
+
+    try:
+
+        result = storage.stats()
+
+        # Guarantee a dictionary response.
+        if not isinstance(result, dict):
+            raise ValueError(
+                "storage.stats() must return a dictionary"
+            )
+
+        return result
+
+    except Exception as exc:
+
+        logger.exception(
+            "Failed to load statistics"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "STATS_ERROR",
+                "message": (
+                    "Dashboard statistics could not "
+                    "be loaded."
+                ),
+            },
+        ) from exc
+
+
+# ============================================================
+# FEEDBACK
+# ============================================================
 
 @app.post("/api/feedback")
-async def feedback(request: FeedbackRequest) -> dict[str, str]:
-    if storage.get(request.analysis_id) is None:
-        raise HTTPException(status_code=404, detail="Analysis not found")
-    storage.feedback(request.analysis_id, request.helpful, request.note)
-    return {"status": "recorded"}
+async def feedback(
+    request: FeedbackRequest,
+) -> dict[str, str]:
+    """
+    Store user feedback for an analysis.
+    """
 
+    try:
+
+        analysis = storage.get(
+            request.analysis_id
+        )
+
+    except Exception as exc:
+
+        logger.exception(
+            "Failed to locate analysis for feedback"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "FEEDBACK_LOOKUP_ERROR",
+                "message": (
+                    "The analysis could not be checked."
+                ),
+            },
+        ) from exc
+
+    if analysis is None:
+
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "ANALYSIS_NOT_FOUND",
+                "message": "Analysis not found.",
+            },
+        )
+
+    try:
+
+        storage.feedback(
+            request.analysis_id,
+            request.helpful,
+            request.note,
+        )
+
+    except Exception as exc:
+
+        logger.exception(
+            "Failed to save feedback"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "FEEDBACK_STORAGE_ERROR",
+                "message": (
+                    "Feedback could not be saved."
+                ),
+            },
+        ) from exc
+
+    return {
+        "status": "recorded"
+    }
+
+
+# ============================================================
+# LOCAL DEVELOPMENT
+# ============================================================
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=settings.port, reload=False)
+
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=settings.port,
+        reload=False,
+    )

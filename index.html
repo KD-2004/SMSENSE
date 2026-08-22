@@ -1,0 +1,1973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMSense — AI-Powered SMS Threat Intelligence</title>
+    <style>
+        /* ============ FONT & BASE ============ */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@500;600;700&display=swap');
+
+        :root {
+            --bg-base: #0a0e14;
+            --bg-panel: rgba(17, 24, 34, 0.85);
+            --bg-card: rgba(22, 31, 46, 0.75);
+            --bg-input: rgba(10, 15, 24, 0.7);
+            --border: rgba(100, 140, 200, 0.15);
+            --border-glow: rgba(0, 200, 255, 0.4);
+            --text-primary: #eef4ff;
+            --text-secondary: #a8b8cc;
+            --text-muted: #64748b;
+            --accent: #00c8ff;
+            --accent2: #a855f7;
+            --accent-grad: linear-gradient(135deg, #00c8ff, #a855f7);
+            --green: #10b981;
+            --yellow: #fbbf24;
+            --orange: #f97316;
+            --red: #ef4444;
+            --critical: #dc2626;
+            --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --font-head: 'Poppins', 'Inter', sans-serif;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 20px;
+            --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            --shadow-glow: 0 0 20px rgba(0, 200, 255, 0.15);
+            --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background: var(--bg-base);
+            color: var(--text-primary);
+            line-height: 1.6;
+            display: flex;
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Animated background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at 20% 30%, rgba(0, 200, 255, 0.08), transparent 40%),
+                        radial-gradient(circle at 80% 70%, rgba(168, 85, 247, 0.08), transparent 40%),
+                        radial-gradient(circle at 50% 50%, rgba(0, 200, 255, 0.03), transparent 60%);
+            animation: bgFloat 20s ease-in-out infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        @keyframes bgFloat {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            50% { transform: translate(2%, -2%) rotate(2deg); }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-base);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent);
+        }
+
+        /* ============ SIDEBAR ============ */
+        .sidebar {
+            width: 280px;
+            background: var(--bg-panel);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 24px 16px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            z-index: 10;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar.open {
+            transform: translateX(0);
+        }
+
+        .logo {
+            padding: 0 12px 24px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+
+        .logo-main {
+            font-size: 28px;
+            font-weight: 700;
+            font-family: var(--font-head);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-badge {
+            background: var(--accent-grad);
+            color: #fff;
+            border-radius: 12px;
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 24px;
+            box-shadow: 0 0 20px rgba(0, 200, 255, 0.5);
+            animation: logoPulse 3s ease-in-out infinite;
+        }
+
+        @keyframes logoPulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(0, 200, 255, 0.5); }
+            50% { box-shadow: 0 0 30px rgba(0, 200, 255, 0.8); }
+        }
+
+        .logo-sub {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 5px;
+            letter-spacing: 0.3px;
+        }
+
+        .nav-section {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 16px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: var(--transition);
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 4px;
+            position: relative;
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+            transform: translateX(4px);
+        }
+
+        .nav-item.active {
+            background: rgba(0, 200, 255, 0.1);
+            color: var(--accent);
+            box-shadow: 0 0 20px rgba(0, 200, 255, 0.1);
+        }
+
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: -16px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 60%;
+            background: var(--accent-grad);
+            border-radius: 0 4px 4px 0;
+            box-shadow: 0 0 10px rgba(0, 200, 255, 0.6);
+        }
+
+        .nav-item .icon {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .nav-item .icon svg {
+            width: 18px;
+            height: 18px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .sidebar-footer {
+            padding: 16px 12px 0;
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--red);
+            transition: var(--transition);
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5);
+        }
+        .status-dot.online {
+            background: var(--green);
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
+            animation: pulseDot 2s infinite;
+        }
+        @keyframes pulseDot {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+            70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        /* ============ MAIN CONTENT ============ */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            position: relative;
+            z-index: 1;
+        }
+
+        .top-header {
+            background: rgba(17, 24, 34, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            padding: 18px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            gap: 20px;
+        }
+
+        .top-header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            font-family: var(--font-head);
+            background: var(--accent-grad);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .last-analysis {
+            font-size: 13px;
+            color: var(--text-secondary);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            white-space: nowrap;
+        }
+
+        .api-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .hamburger {
+            display: none;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 8px;
+            color: var(--text-primary);
+        }
+        .hamburger svg {
+            width: 24px;
+            height: 24px;
+            stroke: currentColor;
+            stroke-width: 2;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .view-container {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .view {
+            display: none;
+            animation: fadeIn 0.4s ease;
+        }
+        .view.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ============ CARDS & LAYOUT ============ */
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-card);
+            transition: var(--transition);
+        }
+        .card:hover {
+            border-color: rgba(0, 200, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), var(--shadow-glow);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+            font-family: var(--font-head);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+        /* Responsive stat grid: 5 cards */
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 24px;
+        }
+
+        /* ============ STAT CARDS ============ */
+        .stat-card {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            text-align: center;
+            box-shadow: var(--shadow-card);
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-card::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--accent-grad);
+            opacity: 0.6;
+        }
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), var(--shadow-glow);
+        }
+        .stat-value {
+            font-size: 36px;
+            font-weight: 800;
+            color: var(--text-primary);
+            background: var(--accent-grad);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .stat-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 5px;
+            font-weight: 500;
+        }
+
+        /* ============ FORMS ============ */
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        input[type="text"], textarea {
+            width: 100%;
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 12px 16px;
+            color: var(--text-primary);
+            font-family: var(--font-main);
+            font-size: 14px;
+            transition: var(--transition);
+        }
+        input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(0, 200, 255, 0.2);
+        }
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        .btn {
+            background: var(--accent-grad);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-sm);
+            padding: 12px 28px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 200, 255, 0.3);
+            letter-spacing: 0.5px;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 200, 255, 0.5);
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            box-shadow: none;
+        }
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            box-shadow: none;
+        }
+
+        .example-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 16px;
+            align-items: center;
+        }
+        .example-btn {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 6px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: var(--transition);
+            font-weight: 500;
+        }
+        .example-btn:hover {
+            background: var(--border);
+            color: var(--text-primary);
+            border-color: var(--accent);
+        }
+
+        .char-counter {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-align: right;
+            margin-top: 4px;
+        }
+
+        .clear-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            font-size: 13px;
+            transition: var(--transition);
+        }
+        .clear-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-secondary);
+        }
+
+        /* ============ TABLES ============ */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th, td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            background: rgba(0, 0, 0, 0.3);
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        tr:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        /* ============ RISK SCORE ============ */
+        .risk-score-container {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+        .risk-score-circle {
+            width: 140px;
+            height: 140px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.4);
+            border: 4px solid var(--border);
+            box-shadow: 0 0 30px rgba(0, 200, 255, 0.2);
+            position: relative;
+            flex-shrink: 0;
+        }
+        .risk-score-circle::before {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            border-radius: 50%;
+            background: var(--accent-grad);
+            opacity: 0.3;
+            filter: blur(12px);
+            z-index: -1;
+        }
+        .risk-score-number {
+            font-size: 42px;
+            font-weight: 800;
+            line-height: 1;
+        }
+        .risk-score-max {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+        .risk-label {
+            font-size: 20px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .risk-label.low { color: var(--green); }
+        .risk-label.suspicious { color: var(--yellow); }
+        .risk-label.high { color: var(--orange); }
+        .risk-label.critical { color: var(--red); }
+
+        .risk-meta {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .risk-meta-item {
+            display: flex;
+            flex-direction: column;
+        }
+        .risk-meta-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .risk-meta-value {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        /* ============ EVIDENCE BARS ============ */
+        .evidence-bar {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 14px;
+        }
+        .evidence-label {
+            width: 130px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        .evidence-track {
+            flex: 1;
+            height: 22px;
+            background: var(--bg-input);
+            border-radius: 11px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .evidence-fill {
+            height: 100%;
+            background: var(--accent-grad);
+            border-radius: 11px;
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 10px;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+            box-shadow: 0 0 10px rgba(0, 200, 255, 0.4);
+        }
+        .evidence-score {
+            width: 90px;
+            font-size: 13px;
+            color: var(--text-primary);
+            font-weight: 600;
+            text-align: right;
+        }
+
+        /* ============ BADGES ============ */
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .badge-low { background: rgba(16, 185, 129, 0.15); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+        .badge-suspicious { background: rgba(251, 191, 36, 0.15); color: var(--yellow); border: 1px solid rgba(251,191,36,0.3); }
+        .badge-high { background: rgba(249, 115, 22, 0.15); color: var(--orange); border: 1px solid rgba(249,115,22,0.3); }
+        .badge-critical { background: rgba(239, 68, 68, 0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+
+        /* ============ MODEL CARDS ============ */
+        .model-card {
+            background: var(--bg-input);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: var(--transition);
+        }
+        .model-card:hover {
+            border-color: rgba(0, 200, 255, 0.3);
+        }
+        .model-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .model-name {
+            font-weight: 600;
+        }
+        .model-status {
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-available { background: var(--green); }
+        .status-unavailable { background: var(--red); }
+
+        /* ============ HEALTH GRID ============ */
+        .health-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 16px;
+        }
+        .health-component {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: var(--transition);
+        }
+        .health-component:hover {
+            border-color: var(--border-glow);
+        }
+        .health-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--red);
+            flex-shrink: 0;
+        }
+        .health-dot.online {
+            background: var(--green);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+        }
+
+        /* ============ ALERTS ============ */
+        .alert {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            border-radius: var(--radius-md);
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        .alert-info {
+            background: rgba(0, 200, 255, 0.1);
+            border-color: rgba(0, 200, 255, 0.3);
+            color: #93c5fd;
+        }
+
+        /* ============ SPINNER ============ */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ============ RESPONSIVE ============ */
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            .sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                width: 280px;
+                transform: translateX(-100%);
+                z-index: 100;
+            }
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            .hamburger {
+                display: block;
+            }
+            .grid-2, .grid-3 { grid-template-columns: 1fr; }
+            .risk-score-container { flex-direction: column; align-items: flex-start; }
+            .top-header {
+                padding: 12px 16px;
+            }
+            .top-header h1 {
+                font-size: 18px;
+            }
+            .last-analysis {
+                display: none;
+            }
+        }
+
+        /* Additional utility */
+        .text-muted { color: var(--text-muted); }
+        .mt-16 { margin-top: 16px; }
+        .mb-16 { margin-bottom: 16px; }
+        .flex { display: flex; }
+        .flex-wrap { flex-wrap: wrap; }
+        .gap-10 { gap: 10px; }
+        .align-center { align-items: center; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <!-- Mobile overlay -->
+    <div id="sidebarOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:99;" onclick="toggleSidebar(false)"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="logo">
+            <div class="logo-main">
+                <div class="logo-badge">S</div>
+                SMSense
+            </div>
+            <div class="logo-sub">AI-Powered SMS Threat Intelligence</div>
+        </div>
+        <nav class="nav-section" id="sidebarNav">
+            <div class="nav-item active" data-view="dashboard" onclick="showView('dashboard')">
+                <span class="icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>
+                Dashboard
+            </div>
+            <div class="nav-item" data-view="analyze" onclick="showView('analyze')">
+                <span class="icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+                Analyze SMS
+            </div>
+            <div class="nav-item" data-view="adversarial" onclick="showView('adversarial')">
+                <span class="icon"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span>
+                Adversarial Test
+            </div>
+            <div class="nav-item" data-view="history" onclick="showView('history')">
+                <span class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
+                History
+            </div>
+            <div class="nav-item" data-view="url-intel" onclick="showView('url-intel')">
+                <span class="icon"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+                URL Intelligence
+            </div>
+            <div class="nav-item" data-view="models" onclick="showView('models')">
+                <span class="icon"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
+                Models & Evidence
+            </div>
+            <div class="nav-item" data-view="health" onclick="showView('health')">
+                <span class="icon"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>
+                System Health
+            </div>
+            <div class="nav-item" data-view="feedback" onclick="showView('feedback')">
+                <span class="icon"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span>
+                Feedback
+            </div>
+        </nav>
+        <div class="sidebar-footer">
+            <span class="status-dot" id="apiStatusDot"></span>
+            <span id="apiStatusText">API: Checking...</span>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <header class="top-header">
+            <button class="hamburger" onclick="toggleSidebar(true)" aria-label="Menu">
+                <svg viewBox="0 0 24 24"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+            <h1 id="viewTitle">Dashboard</h1>
+            <div class="header-right">
+                <div class="last-analysis" id="lastAnalysisTime">No analysis yet</div>
+                <div class="api-status">
+                    <span class="status-dot" id="headerStatusDot"></span>
+                    <span id="headerStatusText">API ONLINE</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="view-container">
+            <!-- Dashboard View -->
+            <div id="view-dashboard" class="view active">
+                <!-- Latest Analysis Card (hidden by default) -->
+                <div class="card hidden" id="latestAnalysisCard">
+                    <div class="card-title">Latest Analysis</div>
+                    <div id="latestAnalysisContent"></div>
+                </div>
+
+                <div class="grid-4" id="statsContainer">
+                    <div class="stat-card"><div class="stat-value" id="statTotal">-</div><div class="stat-label">Total Analyzed</div></div>
+                    <div class="stat-card"><div class="stat-value" id="statLow">-</div><div class="stat-label">Low</div></div>
+                    <div class="stat-card"><div class="stat-value" id="statSuspicious">-</div><div class="stat-label">Suspicious</div></div>
+                    <div class="stat-card"><div class="stat-value" id="statHigh">-</div><div class="stat-label">High Risk</div></div>
+                    <div class="stat-card"><div class="stat-value" id="statCritical">-</div><div class="stat-label">Critical</div></div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Recent Detections</div>
+                    <div id="recentDetections">
+                        <p class="text-muted">Loading...</p>
+                    </div>
+                </div>
+
+                <div class="grid-2">
+                    <div class="card">
+                        <div class="card-title">Risk Distribution</div>
+                        <div id="riskDistributionChart"></div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title">Categories</div>
+                        <div id="categoryChart"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Threat Activity (Last 24 Hours)</div>
+                    <div id="threatActivity"></div>
+                </div>
+            </div>
+
+            <!-- Analyze View -->
+            <div id="view-analyze" class="view">
+                <div class="card">
+                    <div class="card-title">Analyze SMS</div>
+                    <div class="form-group">
+                        <label class="form-label">Message *</label>
+                        <textarea id="analyzeMessage" placeholder="Paste an SMS, message thread, or suspicious notification."></textarea>
+                        <div class="char-counter"><span id="charCount">0</span> / 10,000</div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Sender (optional)</label>
+                        <input type="text" id="analyzeSender" placeholder="e.g., VM-SBIHELP or +91XXXXXXXXXX">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Timestamp (optional)</label>
+                        <input type="text" id="analyzeTimestamp" placeholder="ISO timestamp or leave empty">
+                    </div>
+                    <div class="flex gap-10 align-center">
+                        <button class="btn" id="analyzeBtn" onclick="performAnalyze()">ANALYZE SMS →</button>
+                        <button class="clear-btn" onclick="clearAnalyzeForm()">CLEAR</button>
+                    </div>
+                    <div class="example-buttons">
+                        <span style="font-size:13px; color:var(--text-muted);">Examples:</span>
+                        <button class="example-btn" onclick="setExample('kyc')">KYC Scam</button>
+                        <button class="example-btn" onclick="setExample('otp_notice')">OTP Notice</button>
+                        <button class="example-btn" onclick="setExample('otp_theft')">OTP Theft</button>
+                        <button class="example-btn" onclick="setExample('hinglish')">Normal Hinglish</button>
+                        <button class="example-btn" onclick="setExample('job')">Job Scam</button>
+                        <button class="example-btn" onclick="setExample('lottery')">Lottery Scam</button>
+                        <button class="example-btn" onclick="setExample('upi')">UPI Scam</button>
+                        <button class="example-btn" onclick="setExample('safe')">Safe Transaction</button>
+                        <button class="example-btn" onclick="setExample('url_phish')">URL Phishing</button>
+                        <button class="example-btn" onclick="setExample('obfuscated')">Obfuscated KYC</button>
+                    </div>
+                    <p style="margin-top:12px; font-size:12px; color:var(--text-muted);">Analysis is performed by your configured SMSense backend.</p>
+                </div>
+                <div id="analyzeResultPlaceholder"></div>
+            </div>
+
+            <!-- Adversarial View -->
+            <div id="view-adversarial" class="view">
+                <div class="card">
+                    <div class="card-title">Adversarial SMS Test</div>
+                    <p class="text-muted mb-16">Test the robustness of the system against obfuscation and text perturbations.</p>
+                    <div class="form-group">
+                        <label class="form-label">Original Message</label>
+                        <textarea id="advOriginal" placeholder="Original SMS">KYC update karo warna account block hoga</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Adversarial Variant</label>
+                        <textarea id="advVariant" placeholder="Obfuscated variant">KYC upd8 kro warna acc0unt blck hoga</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Sender (optional)</label>
+                        <input type="text" id="advSender" value="VM-SBIHELP">
+                    </div>
+                    <button class="btn" onclick="runAdversarialTest()">RUN ADVERSARIAL TEST</button>
+                </div>
+                <div id="adversarialResult"></div>
+            </div>
+
+            <!-- History View -->
+            <div id="view-history" class="view">
+                <div class="card">
+                    <div class="card-title">Analysis History</div>
+                    <div class="flex gap-10 align-center mb-16 flex-wrap">
+                        <input type="text" id="historySearch" placeholder="Search messages..." style="flex:1; min-width:200px;">
+                        <select id="historyFilterLabel" style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 12px; color:var(--text-primary);">
+                            <option value="all">All Labels</option>
+                            <option value="LOW">Low</option>
+                            <option value="SUSPICIOUS">Suspicious</option>
+                            <option value="HIGH RISK">High Risk</option>
+                            <option value="CRITICAL">Critical</option>
+                        </select>
+                        <select id="historyFilterCategory" style="background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 12px; color:var(--text-primary);">
+                            <option value="all">All Categories</option>
+                        </select>
+                    </div>
+                    <div id="historyTableContainer">
+                        <p class="text-muted">Loading history...</p>
+                    </div>
+                </div>
+                <div id="historyDetailContainer"></div>
+            </div>
+
+            <!-- URL Intelligence View -->
+            <div id="view-url-intel" class="view">
+                <div class="card">
+                    <div class="card-title">URL Intelligence</div>
+                    <div id="urlIntelContent">
+                        <p class="text-muted">No analysis selected. Run an analysis or click a history item to view URL details.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Models & Evidence View -->
+            <div id="view-models" class="view">
+                <div class="card">
+                    <div class="card-title">SMSense Detection Engine</div>
+                    <div style="background: var(--bg-input); padding: 20px; border-radius: var(--radius-md); font-family: var(--font-main); font-size: 13px; line-height: 1.7; color: var(--text-secondary); overflow-x: auto;">
+                        <pre style="white-space: pre-wrap; margin: 0;">
+                MESSAGE
+                    │
+                    ▼
+             STRUCTURED PARSER
+                    │
+          ┌─────────┼─────────┐
+          │         │         │
+          ▼         ▼         ▼
+       Content    Rules      URLs
+          │         │         │
+          ▼         ▼         ▼
+      HinSpam   Behavior   URL Engine
+      SilverGuard
+          │
+          └─────────┬──────────┘
+                    │
+          Obfuscation Analysis
+                    │
+          Qwen3 Embedding 0.6B
+                    │
+                  FAISS
+                    │
+                    ▼
+             RULE-BASED FUSION
+                    │
+                    ▼
+              RISK SCORE 0-100
+                    │
+                    ▼
+             Qwen3 8B
+                    │
+                    ▼
+                EXPLANATION
+                        </pre>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Model Signals</div>
+                    <div id="modelSignalsContainer">
+                        <p class="text-muted">Run an analysis to see model evidence.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Health View -->
+            <div id="view-health" class="view">
+                <div class="card">
+                    <div class="card-title">System Health</div>
+                    <div id="overallStatus" style="margin-bottom:20px; font-size:16px; font-weight:600;"></div>
+                    <div id="healthComponentsContainer">
+                        <p class="text-muted">Checking backend components...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feedback View -->
+            <div id="view-feedback" class="view">
+                <div class="card">
+                    <div class="card-title">Provide Feedback</div>
+                    <p class="text-muted mb-16">Help improve SMSense by reporting detection accuracy.</p>
+                    <div id="feedbackAnalysisInfo" class="mb-16"></div>
+                    <div class="form-group">
+                        <label class="form-label">Was this detection helpful?</label>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button class="btn btn-secondary" id="btnCorrect" onclick="setFeedback(true, this)">✓ Correct Detection</button>
+                            <button class="btn btn-secondary" id="btnIncorrect" onclick="setFeedback(false, this)">✕ Incorrect Detection</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Note (optional)</label>
+                        <input type="text" id="feedbackNote" placeholder="Add your note...">
+                    </div>
+                    <button class="btn" onclick="submitFeedback()">SUBMIT FEEDBACK</button>
+                </div>
+                <div id="feedbackResult"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== CONFIGURATION ====================
+        const API_BASE = window.SMSENSE_API_BASE || "http://127.0.0.1:8000";
+
+        // ==================== STATE ====================
+        let currentAnalysis = null;
+        let currentAnalysisId = null;
+        let feedbackHelpful = null;
+        let allHistoryRecords = []; // Store for filtering
+        let lastAnalysisTimestamp = null;
+
+        // ==================== UTILITY FUNCTIONS ====================
+        function escapeHtml(value) {
+            if (value === null || value === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(value);
+            return div.innerHTML;
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '—';
+            const d = new Date(dateStr);
+            if (Number.isNaN(d.getTime())) return '—';
+            return d.toLocaleString();
+        }
+
+        function getRiskLabelClass(risk) {
+            if (risk < 20) return 'low';
+            if (risk < 50) return 'suspicious';
+            if (risk < 80) return 'high';
+            return 'critical';
+        }
+
+        function getRiskColor(label) {
+            switch (String(label).toUpperCase()) {
+                case 'LOW': return 'var(--green)';
+                case 'SUSPICIOUS': return 'var(--yellow)';
+                case 'HIGH RISK': return 'var(--orange)';
+                case 'CRITICAL': return 'var(--red)';
+                default: return 'var(--border)';
+            }
+        }
+
+        function showView(viewName) {
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            const viewEl = document.getElementById(`view-${viewName}`);
+            if (viewEl) viewEl.classList.add('active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.querySelector(`.nav-item[data-view="${viewName}"]`)?.classList.add('active');
+            const titles = {
+                'dashboard': 'Dashboard',
+                'analyze': 'Analyze SMS',
+                'adversarial': 'Adversarial Test',
+                'history': 'History',
+                'url-intel': 'URL Intelligence',
+                'models': 'Models & Evidence',
+                'health': 'System Health',
+                'feedback': 'Feedback'
+            };
+            document.getElementById('viewTitle').textContent = titles[viewName] || 'SMSense';
+            // Close mobile sidebar
+            toggleSidebar(false);
+            // Load data on view switch
+            if (viewName === 'dashboard') loadDashboard();
+            if (viewName === 'history') loadHistory();
+            if (viewName === 'health') loadHealth();
+            if (viewName === 'url-intel') renderURIIntel();
+            if (viewName === 'models') renderModels();
+            if (viewName === 'feedback') renderFeedbackInfo();
+        }
+
+        function toggleSidebar(open) {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            if (open) {
+                sidebar.classList.add('open');
+                overlay.style.display = 'block';
+            } else {
+                sidebar.classList.remove('open');
+                overlay.style.display = 'none';
+            }
+        }
+
+        // ==================== API LAYER (with per-endpoint timeout) ====================
+        async function apiRequest(endpoint, options = {}, timeoutMs = 30000) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    ...options,
+                    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+                    signal: controller.signal,
+                    cache: 'no-store'
+                });
+                const text = await response.text();
+                let data = null;
+                try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+                if (!response.ok) {
+                    let message = 'Request failed';
+                    if (data?.detail?.message) message = data.detail.message;
+                    else if (data?.detail) message = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
+                    else if (typeof data === 'string') message = data;
+                    throw new Error(`HTTP ${response.status}: ${message}`);
+                }
+                return data;
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    throw new Error(`Request timed out after ${Math.round(timeoutMs / 60000)} minutes.`);
+                }
+                throw error;
+            } finally {
+                clearTimeout(timeoutId);
+            }
+        }
+
+        async function checkApiStatus() {
+            try {
+                const data = await apiRequest('/api/healthz', {}, 10000);
+                if (data.status === 'ok') {
+                    document.querySelectorAll('#apiStatusDot, #headerStatusDot').forEach(el => el.classList.add('online'));
+                    document.getElementById('apiStatusText').textContent = 'API: ONLINE';
+                    document.getElementById('headerStatusText').textContent = 'API ONLINE';
+                    return true;
+                }
+                return false;
+            } catch (error) {
+                document.querySelectorAll('#apiStatusDot, #headerStatusDot').forEach(el => el.classList.remove('online'));
+                document.getElementById('apiStatusText').textContent = 'API: OFFLINE';
+                document.getElementById('headerStatusText').textContent = 'API OFFLINE';
+                return false;
+            }
+        }
+
+        // ==================== DASHBOARD ====================
+        async function loadDashboard() {
+            const recentContainer = document.getElementById('recentDetections');
+            try {
+                // Load full history (up to 500 records) as authoritative source
+                const historyResponse = await apiRequest('/api/history?limit=500', {}, 30000);
+                const items = Array.isArray(historyResponse) ? historyResponse : (Array.isArray(historyResponse?.items) ? historyResponse.items : []);
+                allHistoryRecords = items.filter(item => item && typeof item === 'object');
+
+                // Calculate totals
+                const totals = { total: allHistoryRecords.length, low: 0, suspicious: 0, high: 0, critical: 0 };
+                const categories = {};
+
+                allHistoryRecords.forEach(item => {
+                    const label = String(item.label || '').toUpperCase();
+                    const category = item.category || 'UNKNOWN';
+                    if (label === 'LOW') totals.low++;
+                    else if (label === 'SUSPICIOUS') totals.suspicious++;
+                    else if (label === 'HIGH RISK' || label === 'HIGH') totals.high++;
+                    else if (label === 'CRITICAL') totals.critical++;
+                    categories[category] = (categories[category] || 0) + 1;
+                });
+
+                // Update stat cards
+                document.getElementById('statTotal').textContent = totals.total;
+                document.getElementById('statLow').textContent = totals.low;
+                document.getElementById('statSuspicious').textContent = totals.suspicious;
+                document.getElementById('statHigh').textContent = totals.high;
+                document.getElementById('statCritical').textContent = totals.critical;
+
+                // Update latest analysis card
+                updateLatestAnalysisCard();
+
+                // Recent detections (newest first)
+                const recent = [...allHistoryRecords]
+                    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+                    .slice(0, 8);
+
+                if (recent.length > 0) {
+                    let tableHtml = `
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Message</th>
+                                    <th>Score</th>
+                                    <th>Label</th>
+                                    <th>Category</th>
+                                    <th>Language</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+                    recent.forEach(item => {
+                        const risk = Number(item.risk_score || 0);
+                        const label = item.label || 'UNKNOWN';
+                        const labelClass = getRiskLabelClass(risk);
+                        tableHtml += `
+                            <tr style="cursor:pointer;" onclick="loadHistoryDetail(${item.id})">
+                                <td>${formatDate(item.created_at)}</td>
+                                <td>${escapeHtml(item.message_preview || item.raw_message || item.message || '')}</td>
+                                <td>${risk}</td>
+                                <td><span class="badge badge-${labelClass}">${escapeHtml(label)}</span></td>
+                                <td>${escapeHtml(item.category || 'UNKNOWN')}</td>
+                                <td>${escapeHtml(item.language || '—')}</td>
+                            </tr>`;
+                    });
+                    tableHtml += '</tbody></table>';
+                    recentContainer.innerHTML = tableHtml;
+                } else {
+                    recentContainer.innerHTML = '<p class="text-muted">No analysis data available.</p>';
+                }
+
+                // Risk distribution
+                const distContainer = document.getElementById('riskDistributionChart');
+                const levels = [
+                    { label: 'LOW', count: totals.low, color: 'var(--green)' },
+                    { label: 'SUSPICIOUS', count: totals.suspicious, color: 'var(--yellow)' },
+                    { label: 'HIGH RISK', count: totals.high, color: 'var(--orange)' },
+                    { label: 'CRITICAL', count: totals.critical, color: 'var(--red)' }
+                ];
+                const maxCount = Math.max(...levels.map(l => l.count), 1);
+                distContainer.innerHTML = levels.map(level => {
+                    const width = level.count === 0 ? 0 : (level.count / maxCount) * 100;
+                    return `
+                        <div class="evidence-bar">
+                            <div class="evidence-label">${level.label}</div>
+                            <div class="evidence-track">
+                                <div class="evidence-fill" style="width:${width}%; background:${level.color};"></div>
+                            </div>
+                            <div class="evidence-score">${level.count}</div>
+                        </div>`;
+                }).join('');
+
+                // Category distribution
+                const catContainer = document.getElementById('categoryChart');
+                const categoryEntries = Object.entries(categories).sort((a, b) => b[1] - a[1]);
+                if (categoryEntries.length > 0) {
+                    const maxCategory = Math.max(...categoryEntries.map(entry => entry[1]), 1);
+                    catContainer.innerHTML = categoryEntries.map(([name, count]) => {
+                        const width = (count / maxCategory) * 100;
+                        return `
+                            <div class="evidence-bar">
+                                <div class="evidence-label" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+                                <div class="evidence-track">
+                                    <div class="evidence-fill" style="width:${width}%; background:var(--accent-grad);"></div>
+                                </div>
+                                <div class="evidence-score">${count}</div>
+                            </div>`;
+                    }).join('');
+                } else {
+                    catContainer.innerHTML = '<p class="text-muted">No category data.</p>';
+                }
+
+                // Threat activity (last 24 hours)
+                const now = Date.now();
+                const last24h = allHistoryRecords.filter(item => {
+                    const created = new Date(item.created_at).getTime();
+                    return !isNaN(created) && now - created <= 24 * 60 * 60 * 1000;
+                });
+                const threatContainer = document.getElementById('threatActivity');
+                if (last24h.length > 0) {
+                    const suspiciousToday = last24h.filter(i => i.label === 'SUSPICIOUS' || i.label === 'HIGH RISK' || i.label === 'CRITICAL').length;
+                    const highestRisk = Math.max(...last24h.map(i => Number(i.risk_score || 0)));
+                    const mostCommonCategory = Object.entries(
+                        last24h.reduce((acc, i) => { acc[i.category || 'UNKNOWN'] = (acc[i.category || 'UNKNOWN'] || 0) + 1; return acc; }, {})
+                    ).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
+                    threatContainer.innerHTML = `
+                        <div class="flex flex-wrap gap-10">
+                            <div>Analyses today: <strong>${last24h.length}</strong></div>
+                            <div>Suspicious today: <strong>${suspiciousToday}</strong></div>
+                            <div>Highest score today: <strong>${highestRisk}</strong></div>
+                            <div>Most common category: <strong>${escapeHtml(mostCommonCategory)}</strong></div>
+                        </div>`;
+                } else {
+                    threatContainer.innerHTML = '<p class="text-muted">No analyses in the last 24 hours.</p>';
+                }
+            } catch (error) {
+                console.error('Dashboard load failed:', error);
+                recentContainer.innerHTML = `<div class="alert"><strong>Dashboard data unavailable</strong><br><br>${escapeHtml(error.message)}</div>`;
+            }
+        }
+
+        function updateLatestAnalysisCard() {
+            const card = document.getElementById('latestAnalysisCard');
+            const content = document.getElementById('latestAnalysisContent');
+            if (currentAnalysis) {
+                card.classList.remove('hidden');
+                const risk = Number(currentAnalysis.risk_score || 0);
+                const label = currentAnalysis.label || 'UNKNOWN';
+                const labelClass = getRiskLabelClass(risk);
+                content.innerHTML = `
+                    <div class="flex gap-10 align-center flex-wrap">
+                        <div class="risk-score-circle" style="width:80px; height:80px; border-width:2px; font-size:20px; border-color:${getRiskColor(label)};">
+                            <div class="risk-score-number" style="font-size:24px;">${risk}</div>
+                            <div class="risk-score-max" style="font-size:10px;">/100</div>
+                        </div>
+                        <div>
+                            <div class="risk-label ${labelClass}">${escapeHtml(label)}</div>
+                            <div>${escapeHtml(currentAnalysis.category || 'UNKNOWN')} · ${escapeHtml(currentAnalysis.language || '')}</div>
+                            <div style="font-size:13px; color:var(--text-secondary);">${escapeHtml(currentAnalysis.raw_message || currentAnalysis.message || '')}</div>
+                            <button class="btn btn-secondary" style="margin-top:8px;" onclick="showView('analyze')">View Full Analysis</button>
+                        </div>
+                    </div>`;
+            } else {
+                card.classList.add('hidden');
+            }
+        }
+
+        // ==================== ANALYZE ====================
+        function setExample(type) {
+            const examples = {
+                'kyc': { message: 'KYC upd8 kro warna account blck hoga', sender: 'VM-SBIHELP', timestamp: '' },
+                'otp_notice': { message: 'Your OTP for login is 4821. Do not share it with anyone.', sender: 'VERIFY', timestamp: '' },
+                'otp_theft': { message: 'Send me your OTP to verify your account', sender: 'Support', timestamp: '' },
+                'hinglish': { message: 'Aaj shaam ko chai pe milte hai', sender: 'Friend', timestamp: '' },
+                'job': { message: 'Work from home! Earn 5000/day. WhatsApp now!', sender: 'HR-Recruiter', timestamp: '' },
+                'lottery': { message: 'Congratulations! You won 1 crore lottery. Pay processing fee to claim.', sender: 'LOTTERY', timestamp: '' },
+                'upi': { message: 'Your UPI account will be blocked. Verify KYC now: bit.ly/upikyc', sender: 'UPI-Support', timestamp: '' },
+                'safe': { message: 'Your payment of Rs. 500 to XYZ was successful. Thank you.', sender: 'Bank', timestamp: '' },
+                'url_phish': { message: 'Your account has been compromised. Click here to secure: http://evil.com/login', sender: 'Security', timestamp: '' },
+                'obfuscated': { message: 'KYC upd8 kro warna acc0unt blck hoga', sender: 'VM-SBIHELP', timestamp: '' }
+            };
+            const ex = examples[type];
+            if (ex) {
+                document.getElementById('analyzeMessage').value = ex.message;
+                document.getElementById('analyzeSender').value = ex.sender;
+                document.getElementById('analyzeTimestamp').value = ex.timestamp || '';
+                updateCharCount();
+            }
+        }
+
+        function clearAnalyzeForm() {
+            document.getElementById('analyzeMessage').value = '';
+            document.getElementById('analyzeSender').value = '';
+            document.getElementById('analyzeTimestamp').value = '';
+            updateCharCount();
+            document.getElementById('analyzeResultPlaceholder').innerHTML = '';
+        }
+
+        function updateCharCount() {
+            const len = document.getElementById('analyzeMessage').value.length;
+            document.getElementById('charCount').textContent = len;
+        }
+
+        async function performAnalyze() {
+            const messageEl = document.getElementById('analyzeMessage');
+            const senderEl = document.getElementById('analyzeSender');
+            const timestampEl = document.getElementById('analyzeTimestamp');
+            const btn = document.getElementById('analyzeBtn');
+            const resultContainer = document.getElementById('analyzeResultPlaceholder');
+
+            const message = messageEl.value.trim();
+            if (!message) {
+                resultContainer.innerHTML = `<div class="alert">Please enter a message before analyzing.</div>`;
+                return;
+            }
+            const sender = senderEl.value.trim() || null;
+            const timestamp = timestampEl.value.trim() || null;
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> AI ANALYSIS IN PROGRESS';
+
+            // Loading UI with pipeline and elapsed timer
+            const startedAt = Date.now();
+            resultContainer.innerHTML = `
+                <div class="card">
+                    <div class="card-title">SMSense AI Analysis</div>
+                    <div style="display:flex; align-items:center; gap:12px; color:var(--text-secondary);">
+                        <span class="spinner"></span>
+                        <span>Running phishing analysis pipeline...</span>
+                    </div>
+                    <div style="margin-top:14px; font-size:12px; color:var(--text-muted); line-height:1.8;">
+                        Parsing · Normalization · Model inference · Evidence fusion · Explanation
+                    </div>
+                    <div id="analysisElapsed" style="margin-top:8px; font-size:11px; color:var(--text-muted);">0s elapsed</div>
+                    <div id="slowMessage" style="margin-top:12px; font-size:12px; color:var(--yellow); display:none;"></div>
+                </div>`;
+
+            const timer = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - startedAt) / 1000);
+                const status = resultContainer.querySelector('#analysisElapsed');
+                if (status) status.textContent = `${elapsed}s elapsed`;
+                const slowMsg = resultContainer.querySelector('#slowMessage');
+                if (slowMsg) {
+                    if (elapsed >= 60 && elapsed < 180) slowMsg.style.display = 'block';
+                    if (elapsed >= 60) slowMsg.textContent = 'Your local AI models are still processing. This can take several minutes on CPU.';
+                    if (elapsed >= 180) slowMsg.textContent = 'Still processing... The backend has not failed. SMSense is continuing to wait.';
+                }
+            }, 1000);
+
+            try {
+                const result = await apiRequest('/api/analyze', {
+                    method: 'POST',
+                    body: JSON.stringify({ message, sender, timestamp })
+                }, 30 * 60 * 1000); // 30 minutes for analysis
+                console.log('SMSense analysis response:', result);
+                currentAnalysis = result;
+                currentAnalysisId = result?.id ?? null;
+                lastAnalysisTimestamp = new Date();
+                updateLastAnalysisTime();
+                renderAnalysisResult(result, resultContainer);
+                resultContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                loadDashboard().catch(console.error);
+                renderURIIntel();
+                renderModels();
+                renderFeedbackInfo();
+            } catch (error) {
+                console.error('SMSense analysis error:', error);
+                resultContainer.innerHTML = `
+                    <div class="alert">
+                        <strong>Analysis failed</strong><br><br>
+                        ${escapeHtml(error.message)}
+                        <button class="btn btn-secondary" style="margin-top:12px;" onclick="retryAnalysis()">RETRY ANALYSIS</button>
+                    </div>`;
+            } finally {
+                clearInterval(timer);
+                btn.disabled = false;
+                btn.innerHTML = 'ANALYZE SMS →';
+            }
+        }
+
+        function retryAnalysis() {
+            performAnalyze();
+        }
+
+        function updateLastAnalysisTime() {
+            const el = document.getElementById('lastAnalysisTime');
+            if (lastAnalysisTimestamp) {
+                el.textContent = `Last analysis: ${lastAnalysisTimestamp.toLocaleTimeString()}`;
+            } else {
+                el.textContent = 'No analysis yet';
+            }
+        }
+
+        function renderAnalysisResult(result, container) {
+            if (!result) {
+                container.innerHTML = `<div class="alert">No analysis result received.</div>`;
+                return;
+            }
+            const risk = Number(result.risk_score ?? 0);
+            const label = result.label || 'UNKNOWN';
+            const labelClass = getRiskLabelClass(risk);
+            const category = result.category || 'UNKNOWN';
+            const language = result.language || 'unknown';
+            const evidence = result.evidence || {};
+            const suspiciousPhrases = Array.isArray(result.suspicious_phrases) ? result.suspicious_phrases : [];
+            const postHoc = result.post_hoc || {};
+            const modelSignals = result.explanation?.model_signals || [];
+            const normalized = result.normalized_message || '';
+            const raw = result.raw_message || '';
+            const obfuscation = result.obfuscation || {};
+            const urlAnalysis = result.url_analysis || {};
+
+            let html = `
+            <div class="card">
+                <div class="card-title">Analysis Result</div>
+                <div class="risk-score-container">
+                    <div class="risk-score-circle" style="border-color:${getRiskColor(label)};">
+                        <div class="risk-score-number">${risk}</div>
+                        <div class="risk-score-max">/ 100</div>
+                    </div>
+                    <div>
+                        <div class="risk-label ${labelClass}">${escapeHtml(label)}</div>
+                        <div class="risk-meta">
+                            <div class="risk-meta-item"><span class="risk-meta-label">Category</span><span class="risk-meta-value">${escapeHtml(category)}</span></div>
+                            <div class="risk-meta-item"><span class="risk-meta-label">Language</span><span class="risk-meta-value">${escapeHtml(language)}</span></div>
+                            <div class="risk-meta-item"><span class="risk-meta-label">Analysis ID</span><span class="risk-meta-value">${result.id ?? '—'}</span></div>
+                        </div>
+                    </div>
+                </div>
+                <p style="font-size:12px; color:var(--text-muted); margin-top:12px;">Rule-based evidence score, not a calibrated probability.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Evidence Breakdown</div>
+                ${renderEvidenceBars(evidence)}
+            </div>
+
+            <div class="card">
+                <div class="card-title">Message Analysis</div>
+                <div style="margin-bottom:16px;">
+                    <div style="color:var(--text-muted); font-size:12px; margin-bottom:5px;">RAW MESSAGE</div>
+                    <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:12px;">${escapeHtml(raw)}</div>
+                </div>
+                <div>
+                    <div style="color:var(--text-muted); font-size:12px; margin-bottom:5px;">NORMALIZED MESSAGE</div>
+                    <div style="background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:12px;">${escapeHtml(normalized)}</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">Detected Signals</div>
+                ${suspiciousPhrases.length ? `<ul style="padding-left:20px;">${suspiciousPhrases.map(p => `<li style="margin-bottom:8px;">⚠ ${escapeHtml(p)}</li>`).join('')}</ul>` : '<p class="text-muted">No suspicious phrases returned.</p>'}
+            </div>
+
+            <div class="card">
+                <div class="card-title">Obfuscation Analysis</div>
+                ${renderObfuscation(obfuscation)}
+            </div>
+
+            <div class="card">
+                <div class="card-title">URL Intelligence</div>
+                ${renderURLAnalysis(urlAnalysis)}
+            </div>
+
+            <div class="card">
+                <div class="card-title">Model Evidence</div>
+                ${renderModelSignals(modelSignals)}
+                <p style="font-size:12px; color:var(--text-muted); margin-top:12px;">Pretrained models provide evidence to the rule-based fusion engine. They do not independently determine the final security label.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-title">AI-Generated Explanation</div>
+                ${postHoc.summary ? `<p>${escapeHtml(postHoc.summary)}</p>` : '<p class="text-muted">No explanation returned.</p>'}
+                ${postHoc.suspicious_phrases?.length ? `<div style="margin-top:15px;"><strong>Explanation Phrases</strong><ul style="margin-top:8px; padding-left:20px;">${postHoc.suspicious_phrases.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>` : ''}
+                ${postHoc.recommended_action ? `<div style="margin-top:15px; padding:12px; background:var(--bg-input); border-radius:6px; border-left:3px solid var(--accent);"><strong>Recommended Action</strong><div style="margin-top:6px; color:var(--text-secondary);">${escapeHtml(postHoc.recommended_action)}</div></div>` : ''}
+            </div>`;
+
+            container.innerHTML = html;
+        }
+
+        function renderEvidenceBars(evidence) {
+            const maxWeights = { content:30, sender:15, url:20, behavior:20, obfuscation:10, similarity:5 };
+            const labels = { content:'Content', sender:'Sender', url:'URL', behavior:'Behavior', obfuscation:'Obfuscation', similarity:'Similarity' };
+            return Object.keys(maxWeights).map(key => {
+                const value = Number(evidence?.[key] ?? 0);
+                const max = maxWeights[key];
+                const percentage = Math.min(100, Math.max(0, (value / max) * 100));
+                return `<div class="evidence-bar">
+                    <div class="evidence-label" title="Max ${max} points">${labels[key]}</div>
+                    <div class="evidence-track"><div class="evidence-fill" style="width:${percentage}%;">${percentage >= 15 ? percentage.toFixed(0) + '%' : ''}</div></div>
+                    <div class="evidence-score">${value.toFixed(2)} / ${max}</div>
+                </div>`;
+            }).join('');
+        }
+
+        function renderModelSignals(modelSignals) {
+            if (!Array.isArray(modelSignals) || modelSignals.length === 0) {
+                return '<p class="text-muted">No model evidence returned.</p>';
+            }
+            return modelSignals.map(model => {
+                const available = Boolean(model.available);
+                const score = Number(model.score ?? 0);
+                return `<div class="model-card">
+                    <div class="model-header">
+                        <span class="model-name">${escapeHtml(model.name || 'Unknown Model')}</span>
+                        <span class="model-status"><span class="status-indicator ${available ? 'status-available' : 'status-unavailable'}"></span>${available ? 'Available' : 'Unavailable'}</span>
+                    </div>
+                    <div>Score: ${score.toFixed(2)}</div>
+                    ${model.detail ? `<div style="margin-top:6px; color:var(--text-muted); font-size:12px;">${escapeHtml(model.detail)}</div>` : ''}
+                </div>`;
+            }).join('');
+        }
+
+        function renderObfuscation(obfuscation) {
+            if (!obfuscation) return '<p class="text-muted">No obfuscation data.</p>';
+            const boolValue = v => v ? '<span style="color:var(--yellow);">YES</span>' : '<span style="color:var(--green);">NO</span>';
+            let html = `<div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px;">
+                <div>Transliteration: <strong>${boolValue(obfuscation.transliteration)}</strong></div>
+                <div>Leetspeak: <strong>${boolValue(obfuscation.leetspeak)}</strong></div>
+                <div>Punctuation manipulation: <strong>${boolValue(obfuscation.punctuation_manipulation)}</strong></div>
+                <div>Spacing manipulation: <strong>${boolValue(obfuscation.spacing_manipulation)}</strong></div>
+                <div>Repeated characters: <strong>${boolValue(obfuscation.repeated_chars)}</strong></div>
+                <div>Concatenated split: <strong>${boolValue(obfuscation.concatenated_split)}</strong></div>
+                <div>Spelling corrected: <strong>${boolValue(obfuscation.spelling_corrected)}</strong></div>
+            </div>`;
+            if (Array.isArray(obfuscation.misspellings) && obfuscation.misspellings.length) {
+                html += `<div style="margin-top:15px;"><strong>Detected Changes</strong><ul style="margin-top:8px; padding-left:20px;">${obfuscation.misspellings.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul></div>`;
+            }
+            return html;
+        }
+
+        function renderURLAnalysis(urlAnalysis) {
+            if (!urlAnalysis || !Array.isArray(urlAnalysis.urls) || urlAnalysis.urls.length === 0) {
+                return '<p class="text-muted">No URL detected. This message contains no URL requiring URL-level inspection.</p>';
+            }
+            let html = '';
+            urlAnalysis.urls.forEach(item => {
+                html += `<div style="background:var(--bg-input); border:1px solid var(--border); border-radius:6px; padding:15px; margin-bottom:12px;">
+                    <div style="word-break:break-all; margin-bottom:10px;"><strong>URL:</strong> ${escapeHtml(item.url || '')}</div>
+                    <div><strong>Domain:</strong> ${escapeHtml(item.domain || 'Unknown')}</div>
+                    <div><strong>Shortened:</strong> ${item.shortened ? 'YES' : 'NO'}</div>
+                    <div><strong>Suspicious Structure:</strong> ${item.suspicious_structure ? 'YES' : 'NO'}</div>
+                    <div><strong>IP Address URL:</strong> ${item.ip_address_url ? 'YES' : 'NO'}</div>
+                    <div><strong>Brand/Domain Mismatch:</strong> ${item.brand_domain_mismatch ? 'YES' : 'NO'}</div>
+                    ${Array.isArray(item.mismatched_brands) && item.mismatched_brands.length ? `<div><strong>Mismatched Brands:</strong> ${escapeHtml(item.mismatched_brands.join(', '))}</div>` : ''}
+                    <div><strong>Reputation:</strong> ${escapeHtml(item.reputation || 'not_checked')}</div>
+                </div>`;
+            });
+            html += `<div style="margin-top:10px; color:var(--text-muted); font-size:12px;">Evidence basis: ${escapeHtml(urlAnalysis.evidence_basis || 'Not provided')}</div>`;
+            return html;
+        }
+
+        // ==================== ADVERSARIAL ====================
+        async function runAdversarialTest() {
+            const original = document.getElementById('advOriginal').value.trim();
+            const variant = document.getElementById('advVariant').value.trim();
+            const sender = document.getElementById('advSender').value.trim() || null;
+            if (!original || !variant) { alert('Please provide both original and variant messages.'); return; }
+            const container = document.getElementById('adversarialResult');
+            container.innerHTML = '<div class="card"><div class="spinner"></div> Running adversarial test...</div>';
+            try {
+                const result = await apiRequest('/api/adversarial-test', {
+                    method: 'POST',
+                    body: JSON.stringify({ messages: [{ message: original, sender }, { message: variant, sender }] })
+                }, 30 * 60 * 1000);
+                const analyses = Array.isArray(result.results) ? result.results : (Array.isArray(result) ? result : []);
+                if (analyses.length < 2) throw new Error('Adversarial test did not return results for both messages.');
+                let html = '<div class="card"><div class="card-title">Adversarial Test Results</div>';
+                html += '<table><thead><tr><th></th><th>Original</th><th>Variant</th></tr></thead><tbody>';
+                html += `<tr><td>Score</td><td>${analyses[0].risk_score ?? '—'}</td><td>${analyses[1].risk_score ?? '—'}</td></tr>`;
+                html += `<tr><td>Label</td><td>${escapeHtml(analyses[0].label || '')}</td><td>${escapeHtml(analyses[1].label || '')}</td></tr>`;
+                html += `<tr><td>Language</td><td>${escapeHtml(analyses[0].language || '')}</td><td>${escapeHtml(analyses[1].language || '')}</td></tr>`;
+                html += `<tr><td>Obfuscation Score</td><td>${analyses[0].evidence?.obfuscation ?? 0}</td><td>${analyses[1].evidence?.obfuscation ?? 0}</td></tr>`;
+                html += `<tr><td>Behavior Score</td><td>${analyses[0].evidence?.behavior ?? 0}</td><td>${analyses[1].evidence?.behavior ?? 0}</td></tr>`;
+                html += `<tr><td>Similarity Score</td><td>${analyses[0].evidence?.similarity ?? 0}</td><td>${analyses[1].evidence?.similarity ?? 0}</td></tr>`;
+                html += '</tbody></table></div>';
+                container.innerHTML = html;
+            } catch (error) {
+                container.innerHTML = `<div class="alert">${escapeHtml(error.message)}</div>`;
+            }
+        }
+
+        // ==================== HISTORY ====================
+        function populateHistoryFilters() {
+            const labelFilter = document.getElementById('historyFilterLabel');
+            const categoryFilter = document.getElementById('historyFilterCategory');
+            // Populate category filter from allHistoryRecords
+            const categories = new Set(allHistoryRecords.map(i => i.category || 'UNKNOWN'));
+            const currentCategory = categoryFilter.value;
+            categoryFilter.innerHTML = '<option value="all">All Categories</option>';
+            categories.forEach(cat => {
+                const option = document.createElement('option');
+                option.value = cat;
+                option.textContent = cat;
+                categoryFilter.appendChild(option);
+            });
+            if (currentCategory !== 'all' && categories.has(currentCategory)) categoryFilter.value = currentCategory;
+            else categoryFilter.value = 'all';
+        }
+
+        function filterHistory() {
+            const searchTerm = document.getElementById('historySearch').value.toLowerCase();
+            const labelFilter = document.getElementById('historyFilterLabel').value;
+            const categoryFilter = document.getElementById('historyFilterCategory').value;
+            const filtered = allHistoryRecords.filter(item => {
+                const text = (item.message_preview || item.raw_message || item.message || '').toLowerCase();
+                const matchesSearch = !searchTerm || text.includes(searchTerm);
+                const matchesLabel = labelFilter === 'all' || (item.label || '').toUpperCase() === labelFilter;
+                const matchesCategory = categoryFilter === 'all' || (item.category || 'UNKNOWN') === categoryFilter;
+                return matchesSearch && matchesLabel && matchesCategory;
+            });
+            renderHistoryTable(filtered);
+        }
+
+        function renderHistoryTable(items) {
+            const container = document.getElementById('historyTableContainer');
+            if (items.length === 0) {
+                container.innerHTML = '<p class="text-muted">No matching records.</p>';
+                return;
+            }
+            let html = '<table><thead><tr><th>ID</th><th>Time</th><th>Message</th><th>Score</th><th>Label</th><th>Category</th><th>Language</th><th>Sender</th></tr></thead><tbody>';
+            items.forEach(item => {
+                const labelClass = getRiskLabelClass(Number(item.risk_score || 0));
+                html += `<tr style="cursor:pointer;" onclick="loadHistoryDetail(${item.id})">
+                    <td>${item.id}</td>
+                    <td>${formatDate(item.created_at)}</td>
+                    <td>${escapeHtml(item.message_preview || item.raw_message || item.message || '')}</td>
+                    <td>${item.risk_score ?? '—'}</td>
+                    <td><span class="badge badge-${labelClass}">${escapeHtml(item.label || '')}</span></td>
+                    <td>${escapeHtml(item.category || '')}</td>
+                    <td>${escapeHtml(item.language || '—')}</td>
+                    <td>${escapeHtml(item.sender || '—')}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        }
+
+        async function loadHistory() {
+            try {
+                const history = await apiRequest('/api/history?limit=500', {}, 30000);
+                const items = Array.isArray(history) ? history : (Array.isArray(history?.items) ? history.items : []);
+                allHistoryRecords = items.filter(item => item && typeof item === 'object');
+                populateHistoryFilters();
+                filterHistory();
+            } catch (error) {
+                document.getElementById('historyTableContainer').innerHTML = `<div class="alert">${escapeHtml(error.message)}</div>`;
+            }
+        }
+
+        async function loadHistoryDetail(id) {
+            try {
+                const analysis = await apiRequest(`/api/history/${id}`, {}, 30000);
+                currentAnalysis = analysis;
+                currentAnalysisId = id;
+                lastAnalysisTimestamp = new Date(analysis.created_at);
+                updateLastAnalysisTime();
+                const detailContainer = document.getElementById('historyDetailContainer');
+                renderAnalysisResult(analysis, detailContainer);
+                detailContainer.scrollIntoView({ behavior: 'smooth' });
+                renderURIIntel();
+                renderModels();
+                renderFeedbackInfo();
+                // Also update latest card on dashboard
+                updateLatestAnalysisCard();
+            } catch (error) {
+                alert(`Error loading analysis: ${error.message}`);
+            }
+        }
+
+        // ==================== URL INTEL VIEW ====================
+        function renderURIIntel() {
+            const container = document.getElementById('urlIntelContent');
+            if (currentAnalysis && currentAnalysis.url_analysis) {
+                container.innerHTML = `<div class="card-title">Latest URL Analysis</div>${renderURLAnalysis(currentAnalysis.url_analysis)}`;
+            } else {
+                container.innerHTML = '<p class="text-muted">No analysis selected. Run an analysis or click a history item to view URL details.</p>';
+            }
+        }
+
+        // ==================== MODELS VIEW ====================
+        function renderModels() {
+            const container = document.getElementById('modelSignalsContainer');
+            if (currentAnalysis && currentAnalysis.explanation && Array.isArray(currentAnalysis.explanation.model_signals)) {
+                container.innerHTML = `<div class="card-title">Model Evidence for Current Analysis</div>${renderModelSignals(currentAnalysis.explanation.model_signals)}`;
+            } else {
+                container.innerHTML = '<p class="text-muted">Run an analysis to see model evidence.</p>';
+            }
+        }
+
+        // ==================== HEALTH ====================
+        async function loadHealth() {
+            try {
+                const health = await apiRequest('/api/health', {}, 30000);
+                const container = document.getElementById('healthComponentsContainer');
+                const overall = document.getElementById('overallStatus');
+                const components = health.components || {};
+                const status = health.status || 'unknown';
+                overall.innerHTML = `Overall Status: <span style="color:${status === 'ok' || status === 'operational' ? 'var(--green)' : 'var(--yellow)'}">${status.toUpperCase()}</span>`;
+                if (Object.keys(components).length === 0) {
+                    container.innerHTML = '<p class="text-muted">No component data available.</p>';
+                    return;
+                }
+                let html = '<div class="health-grid">';
+                for (const [name, info] of Object.entries(components)) {
+                    const available = info.available;
+                    const dotClass = available ? 'online' : '';
+                    const label = name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    html += `<div class="health-component">
+                        <span class="health-dot ${dotClass}"></span>
+                        <div>
+                            <div>${escapeHtml(label)}</div>
+                            <div style="font-size:12px; color:${available ? 'var(--green)' : 'var(--red)'};">${available ? 'Online' : 'Offline'}</div>
+                            ${info.detail ? `<div style="font-size:11px; color:var(--text-muted);">${escapeHtml(info.detail)}</div>` : ''}
+                        </div>
+                    </div>`;
+                }
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (error) {
+                document.getElementById('healthComponentsContainer').innerHTML = `<div class="alert">${escapeHtml(error.message)}</div>`;
+                document.getElementById('overallStatus').innerHTML = '';
+            }
+        }
+
+        // ==================== FEEDBACK ====================
+        function renderFeedbackInfo() {
+            const container = document.getElementById('feedbackAnalysisInfo');
+            if (currentAnalysis) {
+                const labelClass = getRiskLabelClass(Number(currentAnalysis.risk_score || 0));
+                container.innerHTML = `<div style="background:var(--bg-input); padding:10px; border-radius:6px;">
+                    <strong>Analysis ID:</strong> ${currentAnalysisId || 'current'} &nbsp;|&nbsp;
+                    <strong>Score:</strong> ${currentAnalysis.risk_score} &nbsp;|&nbsp;
+                    <strong>Label:</strong> <span class="badge badge-${labelClass}">${escapeHtml(currentAnalysis.label)}</span>
+                </div>`;
+            } else {
+                container.innerHTML = '<p class="text-muted">No analysis selected. Run an analysis first.</p>';
+            }
+        }
+
+        function setFeedback(helpful, button) {
+            feedbackHelpful = helpful;
+            document.querySelectorAll('#view-feedback .btn-secondary').forEach(btn => {
+                btn.classList.remove('active');
+                btn.style.background = '';
+                btn.style.color = '';
+                btn.style.borderColor = '';
+            });
+            button.classList.add('active');
+            button.style.background = 'var(--accent-grad)';
+            button.style.color = '#fff';
+            button.style.borderColor = 'transparent';
+        }
+
+        async function submitFeedback() {
+            if (!currentAnalysis) { alert('No analysis to provide feedback on.'); return; }
+            if (feedbackHelpful === null) { alert('Please select whether the detection was correct or incorrect.'); return; }
+            const note = document.getElementById('feedbackNote').value.trim();
+            try {
+                const response = await apiRequest('/api/feedback', {
+                    method: 'POST',
+                    body: JSON.stringify({ analysis_id: currentAnalysisId || null, helpful: feedbackHelpful, note: note || null })
+                }, 30000);
+                document.getElementById('feedbackResult').innerHTML = '<div class="alert alert-info">Feedback submitted successfully.</div>';
+                // Reset
+                feedbackHelpful = null;
+                document.getElementById('feedbackNote').value = '';
+                document.querySelectorAll('#view-feedback .btn-secondary').forEach(btn => {
+                    btn.classList.remove('active');
+                    btn.style.background = '';
+                    btn.style.color = '';
+                    btn.style.borderColor = '';
+                });
+            } catch (error) {
+                document.getElementById('feedbackResult').innerHTML = `<div class="alert">${escapeHtml(error.message)}</div>`;
+            }
+        }
+
+        // ==================== EVENT LISTENERS ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            // Character counter
+            document.getElementById('analyzeMessage').addEventListener('input', updateCharCount);
+            // History search/filter
+            document.getElementById('historySearch').addEventListener('input', filterHistory);
+            document.getElementById('historyFilterLabel').addEventListener('change', filterHistory);
+            document.getElementById('historyFilterCategory').addEventListener('change', filterHistory);
+            // Ctrl+Enter shortcut
+            document.getElementById('analyzeMessage').addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    performAnalyze();
+                }
+            });
+            // Init
+            init();
+        });
+
+        async function init() {
+            const online = await checkApiStatus();
+            if (online) {
+                loadDashboard();
+                loadHealth();
+            } else {
+                document.getElementById('view-dashboard').innerHTML = `
+                    <div class="alert">
+                        <strong>SMSense backend is offline.</strong><br>
+                        Start the FastAPI server at: <code>http://127.0.0.1:8000</code>
+                    </div>`;
+            }
+        }
+    </script>
+</body>
+</html>
