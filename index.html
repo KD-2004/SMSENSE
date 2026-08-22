@@ -1211,29 +1211,61 @@
         async function apiRequest(endpoint, options = {}, timeoutMs = 30000) {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
             try {
+                const headers = new Headers(options.headers || {});
+
+                // Required for ngrok free browser endpoints.
+                headers.set('ngrok-skip-browser-warning', 'true');
+
+                if (options.body && !headers.has('Content-Type')) {
+                    headers.set('Content-Type', 'application/json');
+                }
+
                 const response = await fetch(`${API_BASE}${endpoint}`, {
                     ...options,
-                    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+                    headers,
                     signal: controller.signal,
                     cache: 'no-store'
                 });
+
                 const text = await response.text();
+
                 let data = null;
-                try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+                try {
+                    data = text ? JSON.parse(text) : null;
+                } catch {
+                    data = text;
+                }
+
                 if (!response.ok) {
                     let message = 'Request failed';
-                    if (data?.detail?.message) message = data.detail.message;
-                    else if (data?.detail) message = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail);
-                    else if (typeof data === 'string') message = data;
+
+                    if (data?.detail?.message) {
+                        message = data.detail.message;
+                    } else if (data?.detail) {
+                        message =
+                            typeof data.detail === 'string'
+                                ? data.detail
+                                : JSON.stringify(data.detail);
+                    } else if (typeof data === 'string') {
+                        message = data;
+                    }
+
                     throw new Error(`HTTP ${response.status}: ${message}`);
                 }
+
                 return data;
+
             } catch (error) {
                 if (error.name === 'AbortError') {
-                    throw new Error(`Request timed out after ${Math.round(timeoutMs / 60000)} minutes.`);
+                    throw new Error(
+                        `Request timed out after ${Math.round(timeoutMs / 60000)} minutes.`
+                    );
                 }
+
                 throw error;
+
             } finally {
                 clearTimeout(timeoutId);
             }
