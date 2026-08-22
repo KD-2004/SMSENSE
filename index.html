@@ -1126,7 +1126,7 @@
 
     <script>
         // ==================== CONFIGURATION ====================
-        const API_BASE = window.SMSENSE_API_BASE || "http://127.0.0.1:8000";
+        const API_BASE = window.SMSENSE_API_BASE || "https://winter-rewrite-amber.ngrok-free.dev";
 
         // ==================== STATE ====================
         let currentAnalysis = null;
@@ -1964,7 +1964,7 @@
                 document.getElementById('view-dashboard').innerHTML = `
                     <div class="alert">
                         <strong>SMSense backend is offline.</strong><br>
-                        Start the FastAPI server at: <code>http://127.0.0.1:8000</code>
+                        Start the FastAPI server at: <code>https://winter-rewrite-amber.ngrok-free.dev</code>
                     </div>`;
             }
         }
