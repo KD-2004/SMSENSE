@@ -1569,12 +1569,30 @@ Then keep this README section as:
 For the strongest repository presentation, put screenshots in this order:
 
 1. Dashboard
-2. KYC phishing result
-3. Safe OTP result
-4. OTP theft result
-5. Adversarial test
-6. Models & Evidence
-7. System Health
+   <img width="1869" height="870" alt="image" src="https://github.com/user-attachments/assets/1a61663b-99f0-43cb-b242-98e0808ec2f4" />
+
+3. KYC phishing result
+<img width="1521" height="850" alt="image" src="https://github.com/user-attachments/assets/6ba32f2e-4b70-41a2-a9dd-4702ed6f13dd" />
+<img width="1516" height="842" alt="image" src="https://github.com/user-attachments/assets/7630ff5a-e38d-44d6-b27f-324876372885" />
+<img width="1521" height="439" alt="image" src="https://github.com/user-attachments/assets/0e4b2c15-6c93-417b-b9d9-2c31dacb23a9" />
+
+5. Safe OTP result
+<img width="1522" height="794" alt="image" src="https://github.com/user-attachments/assets/4cccf514-83b5-4f1c-9a06-0393b672c9b6" />
+<img width="1530" height="919" alt="image" src="https://github.com/user-attachments/assets/061e6111-bba5-4cd0-a334-ca7720953b1a" />
+
+7. OTP theft result
+<img width="1531" height="799" alt="image" src="https://github.com/user-attachments/assets/139f463e-7c88-4e59-80e7-4eb132b244a4" />
+<img width="1528" height="919" alt="image" src="https://github.com/user-attachments/assets/8fd13223-3c2e-41e6-9c2e-2fe6df66e0a3" />
+
+9. Adversarial test
+<img width="1517" height="943" alt="image" src="https://github.com/user-attachments/assets/421e24fc-28af-4988-bf0b-6be464c5bed2" />
+<img width="1509" height="550" alt="image" src="https://github.com/user-attachments/assets/2e78befa-e8d0-45dd-a772-7ad8c313c585" />
+
+11. Models & Evidence
+<img width="1534" height="1032" alt="image" src="https://github.com/user-attachments/assets/d1dd236f-2b8b-4bd7-8f10-e704edd0e7e9" />
+    
+13. System Health
+<img width="1576" height="585" alt="image" src="https://github.com/user-attachments/assets/290bb96f-b1ba-4af7-b2c5-bac080ac1877" />
 
 This tells the project story quickly:
 
