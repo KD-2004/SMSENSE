@@ -28,7 +28,20 @@ In a second terminal, from the repository root:
 python -m http.server 5500 --bind 127.0.0.1
 ~~~
 
-Open http://127.0.0.1:5500. The frontend defaults to http://127.0.0.1:4444. To override before the frontend script executes, define window.SMSENSE_API_BASE; do not hard-code a tunnel URL in the HTML. CORS is permissive for local prototyping; tighten allowed origins and add authentication before exposing the API to others.
+Open http://127.0.0.1:5500. The frontend defaults to http://127.0.0.1:4444. To override before the frontend script executes, define window.SMSENSE_API_BASE; do not hard-code a tunnel URL in the HTML. CORS allows only http://127.0.0.1:5500 and http://localhost:5500 by default. Set CORS_ALLOWED_ORIGINS to a comma-separated list of exact origins for a different local port. CORS is not authentication; do not expose this prototype directly to the internet without authentication, rate limiting, and network restrictions.
+
+## Optional URL reputation
+
+URL reputation uses the Google Safe Browsing Lookup API only when `GOOGLE_SAFE_BROWSING_API_KEY` is set in the backend `.env` file. The API key must be obtained and configured by the project owner; none is bundled with SMSense.
+
+~~~dotenv
+GOOGLE_SAFE_BROWSING_API_KEY=your_google_safe_browsing_api_key
+CORS_ALLOWED_ORIGINS=http://127.0.0.1:5500,http://localhost:5500
+~~~
+
+Only URL strings are sent to the provider, not the SMS body or sender. URLs can themselves contain tracking identifiers or sensitive query parameters, so enable this feature only when that disclosure is acceptable. The checker does not follow redirects or visit the destination. A reputation result of `malicious` adds bounded URL evidence; `no_match` means only that the provider returned no threat-list match at the time of lookup, not that the URL is guaranteed safe. Missing keys, provider errors and rate/limit conditions remain `not_checked` and do not fail the primary analysis.
+
+The client checks at most 10 unique URLs per message, limits concurrent requests, caches successful answers for one hour, and uses a five-second per-request timeout. This optional enrichment does not replace safe browsing behavior or independently verified evaluation.
 
 ## API endpoints
 

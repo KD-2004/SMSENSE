@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Optional
 
-from .parser import ParsedMessage
+from .parser import URL_RE, ParsedMessage
 
 
 # ============================================================
@@ -713,10 +713,9 @@ def behavior_signals(
         )
 
     # KYC + URL.
-    if kyc and _has(
-        value,
-        r"(?:https?://|www\.)",
-    ):
+    # Use the shared parser expression so bare domains (for example,
+    # bit.ly/path or example.com) count as links too.
+    if kyc and URL_RE.search(value):
         combinations.append(
             "KYC plus URL"
         )
@@ -1046,25 +1045,25 @@ def url_signals(
         # Brand / domain mismatch
         # --------------------------------------------------------
 
-        brand_domain_mismatch = False
-        mismatched_brands: list[str] = []
-
-        for brand in sorted(
-            claimed_brands
-        ):
-            brand_present = bool(
+        # Do not call an arbitrary host a brand mismatch merely because a
+        # brand is mentioned somewhere in the SMS. In particular, shortened
+        # links routinely hide their destination and must not be treated as
+        # a proven mismatch. A mismatch is recorded only when the host itself
+        # explicitly names a different known brand than the message claims.
+        hosted_brands: set[str] = set()
+        for host_brand, aliases in brand_aliases.items():
+            if any(
                 re.search(
-                    rf"(^|[.\-]){re.escape(brand)}([.\-]|$)",
+                    rf"(^|[.\\-]){re.escape(alias)}([.\\-]|$)",
                     lowered_domain,
                     re.IGNORECASE,
                 )
-            )
+                for alias in aliases
+            ):
+                hosted_brands.add(host_brand)
 
-            if not brand_present:
-                brand_domain_mismatch = True
-                mismatched_brands.append(
-                    brand
-                )
+        mismatched_brands = sorted(claimed_brands - hosted_brands) if hosted_brands else []
+        brand_domain_mismatch = bool(mismatched_brands)
 
         results.append(
             {

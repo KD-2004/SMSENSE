@@ -211,6 +211,11 @@ def _url_risk(
         if item.get("brand_domain_mismatch"):
             score += 6.0
 
+        # A reputation provider match is stronger than URL structure alone.
+        # A no_match or not_checked result contributes no maliciousness points.
+        if item.get("reputation") == "malicious":
+            score += 12.0
+
     return _clamp(
         score,
         0.0,
@@ -393,6 +398,7 @@ def fuse(
     behavior: BehaviorSignals,
     content_signal: float,
     similarity_signal: float,
+    url_analysis: dict[str, object] | None = None,
 ) -> FusionResult:
     """
     Final transparent evidence fusion.
@@ -432,9 +438,9 @@ def fuse(
         parsed.sender
     )
 
-    urls = url_signals(
-        parsed
-    )
+    # Use enriched reputation results when available. Callers that do not
+    # provide URL analysis retain the original deterministic structural checks.
+    urls = url_analysis if url_analysis is not None else url_signals(parsed)
 
     # --------------------------------------------------------
     # 1. CONTENT

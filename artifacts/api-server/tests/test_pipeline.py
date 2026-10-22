@@ -91,3 +91,30 @@ def test_group_caps_and_short_message_guard():
     assert result.score <= 70
     assert result.evidence["content"] <= 30
     assert result.evidence["similarity"] <= 5
+
+
+
+def test_kyc_combination_recognizes_bare_domain_links():
+    signals = behavior_signals("Your KYC is incomplete. Update now at bit.ly/verify-account")
+    assert "KYC plus URL" in signals.combination_hits
+
+
+def test_shortened_link_is_not_mislabeled_as_explicit_brand_domain_mismatch():
+    from app.rules import url_signals
+
+    parsed = parse_message("SBI KYC reminder: update at bit.ly/verify-account", None, None)
+    item = url_signals(parsed)["urls"][0]
+
+    assert item["shortened"] is True
+    assert item["brand_domain_mismatch"] is False
+    assert item["mismatched_brands"] == []
+
+
+def test_explicit_conflicting_brand_names_in_message_and_host_are_flagged():
+    from app.rules import url_signals
+
+    parsed = parse_message("SBI KYC alert: verify at https://hdfc.example/login", None, None)
+    item = url_signals(parsed)["urls"][0]
+
+    assert item["brand_domain_mismatch"] is True
+    assert item["mismatched_brands"] == ["sbi"]

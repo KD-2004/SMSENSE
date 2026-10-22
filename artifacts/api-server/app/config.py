@@ -27,7 +27,17 @@ class Settings:
     indicbert_model: str = os.getenv("INDICBERT_MODEL", "anmolshrivastav/indicbert-scam-classifier-v2")
     indicbert_enabled: bool = os.getenv("INDICBERT_ENABLED", "false").lower() == "true"
     model_load_on_startup: bool = os.getenv("MODEL_LOAD_ON_STARTUP", "false").lower() == "true"
-    url_reputation_url: str = os.getenv("URL_REPUTATION_URL", "")
+    # Optional Google Safe Browsing Lookup API key. Blank disables external lookups.
+    google_safe_browsing_api_key: str = os.getenv("GOOGLE_SAFE_BROWSING_API_KEY", "").strip()
+    # Comma-separated browser origins allowed to call this local development API.
+    cors_allowed_origins: tuple[str, ...] = tuple(
+        origin.strip().rstrip("/")
+        for origin in os.getenv(
+            "CORS_ALLOWED_ORIGINS",
+            "http://127.0.0.1:5500,http://localhost:5500",
+        ).split(",")
+        if origin.strip()
+    )
     history_limit: int = int(os.getenv("ANALYSIS_HISTORY_LIMIT", "100"))
     low_threshold: int = int(os.getenv("RISK_LOW_THRESHOLD", "25"))
     suspicious_threshold: int = int(os.getenv("RISK_SUSPICIOUS_THRESHOLD", "50"))

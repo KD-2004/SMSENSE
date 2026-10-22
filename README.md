@@ -19,7 +19,7 @@ The project combines **pretrained machine-learning models**, **rule-based securi
 - [How SMSense Works](#how-smsense-works)
 - [System Architecture](#system-architecture)
 - [Detection Pipeline](#detection-pipeline)
-- [Pretrained Models](#pretrained-models)
+- [Current Pretrained Models](#current-pretrained-models)
 - [Evidence Categories](#evidence-categories)
 - [Risk Scoring](#risk-scoring)
 - [Rule-Based Behavior Analysis](#rule-based-behavior-analysis)
@@ -119,8 +119,7 @@ SMSense uses a parallel evidence architecture.
       Content         Behavior         URL
       Analysis        Analysis       Analysis
           |              |              |
-      HinSpam        Rule Engine    URL Rules
-      SilverGuard
+      SMS-Shield     Rule Engine    URL Rules
           |              |
           +------+-------+--------------+
                  |
@@ -252,7 +251,7 @@ For URLs found in an SMS, SMSense can inspect structural indicators such as:
 - Domain information returned by the backend
 - Reputation state when supplied by the backend
 
-SMSense does **not** claim a URL is malicious merely because a structural indicator exists. When reputation is not checked, the UI displays that fact explicitly.
+SMSense does **not** claim a URL is malicious merely because a structural indicator exists. URL reputation is optional and disabled until `GOOGLE_SAFE_BROWSING_API_KEY` is configured in `artifacts/api-server/.env`. When enabled, only extracted URL strings are sent to Google; the complete SMS and sender are not sent. A URL itself may contain sensitive query parameters, so enable external lookups only when that disclosure is acceptable. A no-match result is not a guarantee that a URL is safe. See the [backend setup guide](artifacts/api-server/README.md#optional-url-reputation).
 
 ### 6. Sender Analysis
 
@@ -332,7 +331,7 @@ Multiple detectors run independently.
 
 #### Content
 
-Pretrained model signals from HinSpam and SilverGuard.
+SMS-Shield is the primary pretrained content classifier; its output is treated as capped evidence, not as a calibrated probability.
 
 #### Behavior
 
@@ -677,63 +676,45 @@ A semantic match alone should not be enough to label a message malicious.
 
 ---
 
-## Pretrained Models
+## Current Pretrained Models
 
-SMSense uses pretrained models rather than training a custom meta-classifier.
+SMSense uses one primary pretrained SMS classifier and separate models for optional explanation and semantic retrieval. It does not combine every installed model into the final score.
 
-### HinSpam
+### SMS-Shield — primary detector
 
-Configured model:
-
-```text
-Keshav0av/HinSpam-spam-detection
-```
-
-Purpose:
-
-- Pretrained message/content signal
-- Useful for spam/scam-related text patterns
-
-### SilverGuard
-
-Configured model:
+Configured Ollama model:
 
 ```text
-tanishqmudaliar/SilverGuard
+hf.co/ganmoor-ai-labs/sms-shield:Q4_K_M
 ```
 
-Purpose:
+SMS-Shield targets Indian SMS, including English, Hindi and Roman-Hinglish. Its structured risk output is one evidence source, capped at 30 points in the current fusion engine. The model score is not a calibrated probability. Its publisher's model-card metrics are not independently verified SMSense metrics.
 
-- Additional pretrained threat evidence
-- Provides a separate signal from HinSpam
+### Qwen3 Embedding 0.6B — semantic retrieval
 
-### Qwen3 Embedding
-
-Ollama model:
+Configured Ollama model:
 
 ```text
 qwen3-embedding:0.6b
 ```
 
-Purpose:
+This generates message embeddings for a local FAISS nearest-neighbor search. The current bundled seed corpus has only three examples and is demo data. Similarity is supporting evidence only and is capped at five points.
 
-- Generate message embeddings
-- Support semantic similarity retrieval with FAISS
+### Qwen3 8B — optional explanation
 
-### Qwen3 8B
-
-Ollama model:
+Configured Ollama model:
 
 ```text
 qwen3:8b
 ```
 
-Purpose:
+This generates a post-hoc explanation and recommended action after the score and label are computed. It cannot override the detection decision. If explanation generation fails, the detection result is retained.
 
-- Generate human-readable post-hoc explanations
-- Recommend safe user actions
+### IndicBERT — optional diagnostic challenger
 
-Qwen3 8B is **not** the source of the final security label.
+The optional model `anmolshrivastav/indicbert-scam-classifier-v2` is disabled by default. It requires the optional ML dependencies and reports a diagnostic signal only; it does not participate in production fusion.
+
+HinSpam and SilverGuard are not part of the current primary scoring pipeline. Use the backend README and `MODEL_EVALUATION.md` as the source of truth for current model configuration and evaluation limitations.
 
 ---
 
@@ -812,10 +793,10 @@ This is useful for demonstrating robustness against simplistic obfuscation and s
 
 ### AI / ML
 
-- HinSpam (pretrained)
-- SilverGuard (pretrained)
-- Qwen3 8B (Ollama)
-- Qwen3 Embedding 0.6B (Ollama)
+- SMS-Shield 4B Q4_K_M (primary classifier, Ollama)
+- Qwen3 8B (optional post-hoc explanation, Ollama)
+- Qwen3 Embedding 0.6B (semantic retrieval, Ollama)
+- IndicBERT scam classifier (optional diagnostic only)
 
 ### Retrieval / Similarity
 
@@ -892,13 +873,11 @@ GET /api/health
 
 Returns detailed component status for:
 
-- Ollama
-- Qwen3 8B
-- Qwen3 Embedding
-- HinSpam
-- SilverGuard
-- FAISS
-- SQLite
+- Primary SMS-Shield classifier
+- Optional Qwen3 explanation and embedding models
+- Optional Google Safe Browsing configuration
+- FAISS similarity index
+- SQLite storage
 
 ### Lightweight Health
 
@@ -1202,13 +1181,13 @@ SMSENSE/artifacts/api-server/
 run:
 
 ```bash
-python -m uvicorn app.main:app --reload
+python -m uvicorn app.main:app --host 127.0.0.1 --port 4444 --reload
 ```
 
 The API runs at:
 
 ```text
-http://127.0.0.1:8000
+http://127.0.0.1:4444
 ```
 
 ### Verify Backend Health
@@ -1216,7 +1195,7 @@ http://127.0.0.1:8000
 PowerShell:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/healthz | ConvertTo-Json
+Invoke-RestMethod http://127.0.0.1:4444/api/healthz | ConvertTo-Json
 ```
 
 Expected:
@@ -1230,7 +1209,7 @@ Expected:
 Detailed:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/health | ConvertTo-Json -Depth 10
+Invoke-RestMethod http://127.0.0.1:4444/api/health | ConvertTo-Json -Depth 10
 ```
 
 ### Run the Frontend
@@ -1240,10 +1219,10 @@ Open the project's `index.html` through a local/static HTTP server or the config
 The frontend is configured to communicate with the backend at:
 
 ```text
-http://127.0.0.1:8000
+http://127.0.0.1:4444
 ```
 
-Do not open a production deployment and expect `127.0.0.1` to point to the same backend machine; for deployed environments, change the API base URL to the public backend URL.
+Run the API bound to `127.0.0.1` for local use. The default CORS allowlist permits the documented local frontend origins `http://127.0.0.1:5500` and `http://localhost:5500`; configure `CORS_ALLOWED_ORIGINS` with exact origins if you use another local port. CORS is not authentication. Do not expose this prototype directly to the internet; use an authenticated, rate-limited deployment layer and restrictive network access first.
 
 ---
 
@@ -1258,7 +1237,7 @@ $body = @{
 } | ConvertTo-Json
 
 Invoke-RestMethod `
-    -Uri "http://127.0.0.1:8000/api/analyze" `
+    -Uri "http://127.0.0.1:4444/api/analyze" `
     -Method POST `
     -ContentType "application/json" `
     -Body $body |
@@ -1274,7 +1253,7 @@ $body = @{
 } | ConvertTo-Json
 
 Invoke-RestMethod `
-    -Uri "http://127.0.0.1:8000/api/analyze" `
+    -Uri "http://127.0.0.1:4444/api/analyze" `
     -Method POST `
     -ContentType "application/json" `
     -Body $body |
@@ -1361,11 +1340,10 @@ The SMSense System Health page exposes the backend component state.
 Typical components include:
 
 ```text
-Ollama
-Qwen3 8B
-Qwen3 Embedding 0.6B
-HinSpam
-SilverGuard
+SMS-Shield classifier
+Qwen3 8B (optional explanation)
+Qwen3 Embedding 0.6B (optional retrieval)
+Google Safe Browsing (optional; requires API key)
 FAISS
 SQLite
 ```
@@ -1645,6 +1623,6 @@ Do not claim a license that has not actually been selected for the repository.
 
 ## Acknowledgements
 
-SMSense integrates and builds upon open-source and pretrained technologies including FastAPI, Hugging Face Transformers, Ollama, FAISS, NumPy, ONNX Runtime, and the configured pretrained HinSpam and SilverGuard models.
+SMSense integrates FastAPI, Ollama, FAISS, NumPy and the configured SMS-Shield, Qwen3 embedding and Qwen3 explanation models. IndicBERT is optional and diagnostic-only. Optional Google Safe Browsing lookups require a separately configured API key.
 
 Please review the individual model and software licenses before production or commercial use.
