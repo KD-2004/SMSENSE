@@ -994,9 +994,11 @@ def url_signals(
                 claimed_brands.add(brand)
                 break
 
+    # parsed.domains is unique per host for summary/reporting; url_domains
+    # deliberately stays one-to-one with urls for per-URL checks.
     for raw_url, domain in zip(
         parsed.urls,
-        parsed.domains,
+        parsed.url_domains,
     ):
         lowered_url = raw_url.lower()
         lowered_domain = domain.lower()
