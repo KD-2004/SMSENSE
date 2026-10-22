@@ -8,6 +8,7 @@ from .normalizer import normalize_message
 from .parser import parse_message
 from .rules import behavior_signals, language_hint, url_signals
 from .similarity import SimilarityStore
+from .url_reputation import UrlReputationClient
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,7 @@ class AnalysisService:
         self.sms_shield = SmsShieldClient()
         self.hf = HuggingFaceModels()
         self.similarity = SimilarityStore()
+        self.url_reputation = UrlReputationClient()
 
     async def analyze(
         self,
@@ -29,6 +31,35 @@ class AnalysisService:
         parsed = parse_message(message, sender, timestamp)
         normalized = normalize_message(message)
         behavior = behavior_signals(message)
+
+        # URL reputation is opt-in. Only extracted URL strings are sent to the
+        # configured provider; SMS text, sender and other message data stay local.
+        # Provider errors leave reputation as not_checked and never block analysis.
+        url_analysis = url_signals(parsed)
+        try:
+            reputation_results = await self.url_reputation.check_urls(parsed.urls)
+            reputation_by_url = {
+                str(item.get("url")): item
+                for item in reputation_results
+                if isinstance(item, dict) and item.get("url")
+            }
+            url_items = url_analysis.get("urls", [])
+            if isinstance(url_items, list):
+                for url_item in url_items:
+                    if not isinstance(url_item, dict):
+                        continue
+                    reputation = reputation_by_url.get(str(url_item.get("url", "")))
+                    if reputation:
+                        url_item["reputation"] = reputation.get("reputation", "not_checked")
+                        url_item["reputation_provider"] = reputation.get("provider")
+                        url_item["reputation_detail"] = reputation.get("detail")
+                        url_item["threat_types"] = reputation.get("threat_types", [])
+            url_analysis["evidence_basis"] = (
+                "URL structure plus optional Google Safe Browsing reputation; "
+                "a no_match result is not a guarantee that a URL is safe"
+            )
+        except Exception as exc:
+            logger.warning("Optional URL reputation enrichment unavailable (%s)", type(exc).__name__)
 
         # SMS-Shield is the primary Indian SMS model. Its 0–100 risk field is
         # model-provided evidence, not a calibrated probability. Keep its content
@@ -82,6 +113,7 @@ class AnalysisService:
             behavior=behavior,
             content_signal=content_signal,
             similarity_signal=similarity_signal,
+            url_analysis=url_analysis,
         )
         model_risk = int(model_assessment.get("risk", 0) or 0)
         model_verdict = str(model_assessment.get("verdict", "unknown"))
@@ -99,7 +131,7 @@ class AnalysisService:
         if model_risk >= 70 and result.score < settings.high_risk_threshold:
             review_reasons.append("high_model_risk_below_high_risk_threshold")
 
-        url_review_items = (url_signals(parsed) or {}).get("urls", [])
+        url_review_items = url_analysis.get("urls", [])
         if not sender:
             data_gaps.append("sender_not_provided")
         if any(
@@ -143,7 +175,7 @@ class AnalysisService:
             "sender": sender,
             "evidence": result.evidence,
             "suspicious_phrases": behavior.combination_hits,
-            "url_analysis": url_signals(parsed),
+            "url_analysis": url_analysis,
             "similarity": similarity_result,
             "obfuscation": normalized.__dict__,
             "explanation": {
