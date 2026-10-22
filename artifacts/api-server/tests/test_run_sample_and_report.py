@@ -27,13 +27,13 @@ def test_read_samples_preserves_message_sender_and_ground_truth(tmp_path):
 
 def test_read_samples_rejects_missing_message_column(tmp_path):
     source = tmp_path / "input.csv"
-    source.write_text("text,label\\nhello,HAM\\n", encoding="utf-8")
+    source.write_text("text,label\nhello,HAM\n", encoding="utf-8")
     with pytest.raises(ValueError, match="message"):
         read_samples(source)
 
 
 def test_read_samples_rejects_blank_messages(tmp_path):
     source = tmp_path / "input.csv"
-    source.write_text("message,label\\n ,HAM\\n", encoding="utf-8")
+    source.write_text("message,label\n ,HAM\n", encoding="utf-8")
     with pytest.raises(ValueError, match="blank"):
         read_samples(source)
