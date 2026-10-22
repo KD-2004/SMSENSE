@@ -251,7 +251,7 @@ For URLs found in an SMS, SMSense can inspect structural indicators such as:
 - Domain information returned by the backend
 - Reputation state when supplied by the backend
 
-SMSense does **not** claim a URL is malicious merely because a structural indicator exists. When reputation is not checked, the UI displays that fact explicitly.
+SMSense does **not** claim a URL is malicious merely because a structural indicator exists. URL reputation is optional and disabled until a Google Safe Browsing API key is configured. When enabled, only extracted URL strings are sent to Google; the complete SMS and sender are not sent. A no-match result is not a guarantee that a URL is safe.
 
 ### 6. Sender Analysis
 
@@ -873,13 +873,11 @@ GET /api/health
 
 Returns detailed component status for:
 
-- Ollama
-- Qwen3 8B
-- Qwen3 Embedding
-- HinSpam
-- SilverGuard
-- FAISS
-- SQLite
+- Primary SMS-Shield classifier
+- Optional Qwen3 explanation and embedding models
+- Optional Google Safe Browsing configuration
+- FAISS similarity index
+- SQLite storage
 
 ### Lightweight Health
 
@@ -1224,7 +1222,7 @@ The frontend is configured to communicate with the backend at:
 http://127.0.0.1:4444
 ```
 
-Do not open a production deployment and expect `127.0.0.1` to point to the same backend machine; for deployed environments, change the API base URL to the public backend URL.
+Run the API bound to `127.0.0.1` for local use. The default CORS allowlist permits the documented local frontend origins `http://127.0.0.1:5500` and `http://localhost:5500`; configure `CORS_ALLOWED_ORIGINS` with exact origins if you use another local port. CORS is not authentication. Do not expose this prototype directly to the internet; use an authenticated, rate-limited deployment layer and restrictive network access first.
 
 ---
 
