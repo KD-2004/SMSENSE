@@ -39,6 +39,20 @@ def test_roc_auc_handles_perfect_and_tied_rankings():
     assert roc_auc([{"label": 1, "score": 10}], "score") is None
 
 
+def test_load_rows_preserves_message_whitespace(tmp_path):
+    import csv
+    from tools.evaluate_dataset import load_rows
+
+    path = tmp_path / "messages.csv"
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["source_id", "message", "label"])
+        writer.writeheader()
+        writer.writerow({"source_id": "case-1", "message": "  OTP text  ", "label": "HAM"})
+
+    rows = load_rows(path)
+    assert rows[0]["message"] == "  OTP text  "
+
+
 def test_unknown_ground_truth_label_fails_clearly():
     try:
         parse_label("maybe", 9)
