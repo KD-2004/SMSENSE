@@ -20,8 +20,10 @@ class Settings:
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
     ollama_chat_model: str = os.getenv("OLLAMA_CHAT_MODEL", "qwen3:8b")
     ollama_embedding_model: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "qwen3-embedding:0.6b")
-    hinspam_model: str = os.getenv("HINSPAM_MODEL", "Keshav0av/HinSpam-spam-detection")
-    silverguard_model: str = os.getenv("SILVERGUARD_MODEL", "tanishqmudaliar/SilverGuard")
+    sms_shield_model: str = os.getenv(
+        "SMSENSE_CLASSIFIER_MODEL",
+        "hf.co/ganmoor-ai-labs/sms-shield:Q4_K_M",
+    )
     indicbert_model: str = os.getenv("INDICBERT_MODEL", "anmolshrivastav/indicbert-scam-classifier-v2")
     indicbert_enabled: bool = os.getenv("INDICBERT_ENABLED", "false").lower() == "true"
     model_load_on_startup: bool = os.getenv("MODEL_LOAD_ON_STARTUP", "false").lower() == "true"
