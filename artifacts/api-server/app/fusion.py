@@ -380,7 +380,7 @@ def _category(
     if urls.get("count", 0):
         return "URL_REVIEW"
 
-    return "spam_or_scam"
+    return "GENERAL_MESSAGE"
 
 
 # ============================================================
