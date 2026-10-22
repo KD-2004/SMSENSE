@@ -45,8 +45,10 @@ def load_rows(csv_path: Path) -> list[dict[str, Any]]:
         if missing:
             raise ValueError(f"CSV is missing required columns: {sorted(missing)}")
         for row_number, row in enumerate(reader, start=2):
-            message = (row.get("message") or "").strip()
-            if not message:
+            # Preserve the original SMS exactly; only use strip() to check
+            # whether it contains meaningful characters.
+            message = row.get("message") or ""
+            if not message.strip():
                 raise ValueError(f"Row {row_number}: message cannot be empty")
             rows.append(
                 {
