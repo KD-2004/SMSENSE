@@ -12,6 +12,11 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 Copy-Item .env.example .env
+
+# Install/download the primary SMS-Shield model once (about 2.4 GB quantized).
+ollama run hf.co/ganmoor-ai-labs/sms-shield:Q4_K_M
+# Once the model loads, enter /bye to return to PowerShell.
+
 python -m uvicorn app.main:app --host 127.0.0.1 --port 4444 --reload
 ~~~
 
@@ -36,7 +41,13 @@ OpenAPI is available at `/docs`.
 
 ## Models and evidence
 
-The required text classifiers are HinSpam and SilverGuard. Qwen3 provides optional post-hoc explanations and embeddings for FAISS similarity. Similarity results are supporting evidence, never a phishing probability. A missing or unavailable optional similarity service is reported in the response without inventing a score. Category and risk label are separate concepts; when no specific category rule matches, the API returns `GENERAL_MESSAGE`.
+The primary text detector is **SMS-Shield** (`hf.co/ganmoor-ai-labs/sms-shield:Q4_K_M`), an Indian SMS scam/inbox model fine-tuned from Qwen3-4B and available as a quantized Ollama model. Its structured verdict, risk band, scam type, and red flags are returned in `model_assessment`. For messages longer than 512 characters, the backend evaluates overlapping segments and uses the highest risk segment; this is intentionally recall-oriented and should be measured for false positives.
+
+Qwen3 remains an optional post-hoc explainer and embedding provider. FAISS similarity is supporting evidence, not a phishing probability. The optional IndicBERT challenger is disabled by default and never affects production scoring; install `requirements-optional-ml.txt` before enabling it. See [MODEL_EVALUATION.md](../../MODEL_EVALUATION.md) for model-card caveats and the labelled benchmark workflow.
+
+## Optional multilingual challenger
+
+The default installation does not install PyTorch/Transformers. To run the optional IndicBERT comparison, activate the virtual environment, run `python -m pip install -r requirements-optional-ml.txt`, set `INDICBERT_ENABLED=true` in `.env`, and restart the backend. IndicBERT adds substantial memory use and reports diagnostic scores only; it does not change the fused risk score.
 
 ## FAISS index
 
