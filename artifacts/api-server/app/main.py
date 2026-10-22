@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,6 +42,13 @@ logger = logging.getLogger("smsense")
 # FASTAPI APPLICATION
 # ============================================================
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Run startup diagnostics using FastAPI's lifespan interface."""
+    await startup_diagnostics()
+    yield
+
+
 app = FastAPI(
     title="SMSense API",
     description=(
@@ -48,6 +56,7 @@ app = FastAPI(
         "vernacular phishing detection API."
     ),
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 
@@ -86,7 +95,6 @@ storage = Storage()
 # STARTUP DIAGNOSTICS
 # ============================================================
 
-@app.on_event("startup")
 async def startup_diagnostics() -> None:
     """
     Log the configured detection stack at startup.
