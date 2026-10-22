@@ -1,10 +1,22 @@
-# SMSense accuracy and robustness evaluation
+# SMSense model selection and accuracy evaluation
 
-## What this measures
+## Current model decision
 
-SMSense combines two pretrained message classifiers with transparent behaviour, sender, URL and obfuscation evidence. Its 0–100 output is a **risk score, not a calibrated probability**. The evaluation runner measures the running API against labels you supply; it does not certify the detector or assume model-card results transfer to your messages.
+The primary detector is **SMS-Shield 4B Q4_K_M**, run locally through Ollama:
 
-The HinSpam model card documents label 0 as ham and label 1 as spam. SMSense now interprets that mapping explicitly when the standard HinSpam model is configured and uses semantic class names when available. The SilverGuard model card describes its ONNX output as an already-softmaxed scam probability in the 0–1 range. See the [HinSpam model card](https://huggingface.co/Keshav0av/HinSpam-spam-detection) and [SilverGuard model card](https://huggingface.co/tanishqmudaliar/SilverGuard). These are third-party model descriptions, not independent validation of SMSense on your dataset.
+- [SMS-Shield model card](https://huggingface.co/ganmoor-ai-labs/sms-shield)
+- [OpenTextShield alternative](https://huggingface.co/telecomsxchange/OpenTextShield)
+- [IndicBERT scam classifier v2](https://huggingface.co/anmolshrivastav/indicbert-scam-classifier-v2)
+
+SMS-Shield is the closest fit found for this project because the published model contract explicitly targets Indian SMS, English, Hindi/Devanagari and romanized Hinglish; accepts sender/header context; and returns a structured verdict, category, scam type, risk band and red flags. Its quantized Q4_K_M file is about 2.4 GB according to its model card, and it can run locally using Ollama. The project has been updated to use this model as the primary scorer instead of requiring HinSpam plus SilverGuard.
+
+The model card reports 99.2% verdict accuracy, 99.5% dangerous recall and no genuine OTP/bank-alert false flags on its 1,390-example held-out set. **These are the model author's reported numbers, not independently verified SMSense results.** The card also states that its 12.5k-message training corpus is synthetic and that distribution shift is expected. It does not establish that the same metrics will hold on real SMS. We therefore use its score as one capped evidence source alongside URL, behaviour, sender and obfuscation checks; the score is not a calibrated probability.
+
+I compared it with OpenTextShield, an MIT-licensed multilingual BERT SMS classifier with a smaller runtime footprint. Its own model card is usefully candid about modern phishing: it reports 72.4% combined block rate and 45.7% phishing recall on its independent 8,007-message IMC 2025 benchmark, while noting that other benchmark sets overlap its training data. That makes it an interesting challenger, but not the best first choice for SMSense's Indian scam focus. IndicBERT's reported 99.64% is from a small manually curated set of 1,400 and is also author-reported, so it remains an optional diagnostic challenger instead of being added to the production ensemble.
+
+**Why not combine every model?** More models can add correlated errors, memory use and latency. This change selects one task-aligned primary model and keeps the fusion transparent. The next decision should come from an independently labelled SMSense benchmark, not headline percentages from different model cards.
+
+The main model card only specifies 512 characters per request. SMSense therefore classifies longer pasted texts in overlapping 512-character segments and takes the highest segment risk. That is a deliberate recall-first policy; it can increase false positives on long copied conversations and must be measured.
 
 ## Run an evaluation
 
