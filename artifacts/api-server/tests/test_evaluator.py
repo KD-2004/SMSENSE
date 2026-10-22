@@ -1,4 +1,4 @@
-from tools.evaluate_dataset import metrics, parse_label, roc_auc
+from tools.evaluate_dataset import metrics, parse_label, roc_auc, validate_class_coverage
 
 
 def test_label_mapping_accepts_common_ground_truth_terms():
@@ -60,3 +60,43 @@ def test_unknown_ground_truth_label_fails_clearly():
         assert "Row 9" in str(exc)
     else:
         raise AssertionError("Unknown labels must not be silently treated as ham")
+
+
+def test_blank_label_explains_that_ground_truth_must_be_verified():
+    try:
+        parse_label("", 12)
+    except ValueError as exc:
+        assert "independently verified" in str(exc)
+        assert "Do not copy SMSense predictions" in str(exc)
+    else:
+        raise AssertionError("Blank labels must never be guessed")
+
+
+def test_evaluation_requires_both_verified_classes():
+    validate_class_coverage([{"label": 0}, {"label": 1}])
+    try:
+        validate_class_coverage([{"label": 0}, {"label": 0}])
+    except ValueError as exc:
+        assert "at least one independently verified benign" in str(exc)
+        assert "one scam example" in str(exc)
+    else:
+        raise AssertionError("Single-class evaluation data must be rejected")
+
+
+def test_load_rows_rejects_duplicate_source_ids(tmp_path):
+    import csv
+    from tools.evaluate_dataset import load_rows
+
+    path = tmp_path / "duplicates.csv"
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["source_id", "message", "label"])
+        writer.writeheader()
+        writer.writerow({"source_id": "same", "message": "message one", "label": "HAM"})
+        writer.writerow({"source_id": "same", "message": "message two", "label": "SCAM"})
+
+    try:
+        load_rows(path)
+    except ValueError as exc:
+        assert "duplicate source_id" in str(exc)
+    else:
+        raise AssertionError("Duplicate source IDs should be rejected")

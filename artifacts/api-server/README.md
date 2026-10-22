@@ -61,13 +61,31 @@ Do not treat the small demo index as a validated detector. Before using similari
 
 ## Labelled evaluation
 
-To measure accuracy against independently reviewed ground-truth labels, fill in data/evaluation_template.csv and follow the [accuracy and robustness guide](../../MODEL_EVALUATION.md). With the backend running, from this directory run:
+The evaluation script requires a CSV with both a message column and a label column. The label must be independently verified ground truth. It is not inferred from SMSense predictions.
+
+### 1. Prepare a starter CSV
+
+From this backend directory, run the helper against your input messages CSV:
 
 ~~~powershell
-python tools/evaluate_dataset.py --csv data/evaluation.csv --base-url http://127.0.0.1:4444 --threshold 50
+python tools/prepare_evaluation_csv.py --input "C:\path\to\your_messages.csv" --output data\evaluation.csv
 ~~~
 
-The runner uses /api/adversarial-test in batches and omits message text from the exported prediction file. Tune any threshold on validation data only; use an untouched test set for the final report. Do not present the 0–100 fused risk score as a probability.
+The helper preserves message text and copies source_id, sender, language, and scenario when those columns exist. It creates the label column blank by default, assigns source IDs when needed, and does not copy prediction labels. Open data\evaluation.csv in a spreadsheet editor and fill each label only after independent review.
+
+Supported benign labels: HAM, LEGITIMATE, BENIGN, SAFE, CLEAN, or NORMAL. Supported scam labels: SCAM, SPAM, PHISHING, FRAUD, or SMISHING. The CSV must contain at least one example from each class. If you already have a column of human-verified labels, it can be copied explicitly with --verified-label-column human_review; use that option only for independently verified labels, never a model's predictions. The helper refuses to overwrite an existing output unless --force is supplied.
+
+### 2. Run the evaluation
+
+Start the backend and wait until the API is ready, then run:
+
+~~~powershell
+python tools/evaluate_dataset.py --csv data\evaluation.csv --base-url http://127.0.0.1:4444 --threshold 50 --report data\evaluation_report.json --predictions data\evaluation_predictions.csv
+~~~
+
+The evaluator rejects a missing CSV, blank/unsupported labels, duplicate source IDs, and a dataset containing only one class, with a clear error message. It uses /api/adversarial-test in batches of at most 20 and omits original message text from the exported prediction CSV.
+
+For a research-quality result, tune the threshold on a validation set and report final metrics on an untouched test set. Review false positives and false negatives, plus language/scenario breakdowns. Do not present the 0–100 fused risk score as a probability. If ground-truth labels are not available yet, continue using tools/run_sample_and_report.py for operational diagnostics, but do not report accuracy.
 
 ## Tests
 
