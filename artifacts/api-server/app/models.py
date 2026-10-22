@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 # before inference. Keep this preprocessing separate from the raw SMS used by
 # the existing models and the explanation layer.
 INDICBERT_PHONE_RE = re.compile(
-    r"(?<!\\d)(?:\\+?91[\\s.-]?)?[6-9]\\d(?:[\\s.-]?\\d){8}(?!\\d)|"
-    r"(?<!\\d)\\+\\d[\\d\\s().-]{6,}\\d(?!\\d)"
+    r"(?<!\d)(?:\+?91[\s.-]?)?[6-9]\d(?:[\s.-]?\d){8}(?!\d)|"
+    r"(?<!\d)\+\d[\d\s().-]{6,}\d(?!\d)"
 )
 
 
