@@ -214,7 +214,11 @@ def main() -> int:
                 signals = (result.get("explanation") or {}).get("model_signals", [])
                 if isinstance(signals, list):
                     for signal in signals:
-                        if not isinstance(signal, dict) or not signal.get("name"):
+                        if (
+                            not isinstance(signal, dict)
+                            or not signal.get("name")
+                            or signal.get("available") is False
+                        ):
                             continue
                         try:
                             scaled = float(signal["score"]) / 15.0 * 100.0
