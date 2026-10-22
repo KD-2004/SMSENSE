@@ -373,33 +373,15 @@ def _credential_request(text: str) -> bool:
     if not related_pairs:
         return False
 
-    # --------------------------------------------------------
-    # If negation is near the action/credential pair,
-    # it overrides the positive request.
-    # --------------------------------------------------------
-
+    # Negation applies to a specific nearby action/credential pair only.
+    # Continue checking other pairs: a message may contain both a safety
+    # warning and a separate request for another secret.
+    negated_pairs: set[tuple[int, int]] = set()
     for action_index, credential_index in related_pairs:
-
-        lower = min(
-            action_index,
-            credential_index,
-        )
-
-        upper = max(
-            action_index,
-            credential_index,
-        )
-
-        for negation_index in negation_positions:
-
-            # Negation must be reasonably close to the
-            # request phrase.
-            if (
-                lower - 3
-                <= negation_index
-                <= upper + 3
-            ):
-                return False
+        lower = min(action_index, credential_index)
+        upper = max(action_index, credential_index)
+        if any(lower - 3 <= n <= upper + 3 for n in negation_positions):
+            negated_pairs.add((action_index, credential_index))
 
     # --------------------------------------------------------
     # Roman-Hinglish explicit safety pattern:
@@ -410,26 +392,14 @@ def _credential_request(text: str) -> bool:
     # --------------------------------------------------------
 
     for credential_index in credential_positions:
-
-        start = max(
-            0,
-            credential_index - 5,
-        )
-
-        end = min(
-            len(tokens),
-            credential_index + 6,
-        )
-
+        start = max(0, credential_index - 5)
+        end = min(len(tokens), credential_index + 6)
         window = tokens[start:end]
 
-        if (
-            "mat" in window
-            or "matt" in window
-        ):
-            for action in REQUEST_ACTIONS:
-                if action in window:
-                    return False
+        if "mat" in window or "matt" in window:
+            for action_index, action_token in enumerate(tokens):
+                if action_token in REQUEST_ACTIONS and abs(action_index - credential_index) <= MAX_DISTANCE:
+                    negated_pairs.add((action_index, credential_index))
 
     # --------------------------------------------------------
     # At this point, we have:
@@ -440,7 +410,7 @@ def _credential_request(text: str) -> bool:
     # Therefore treat it as an actual request.
     # --------------------------------------------------------
 
-    return True
+    return any(pair not in negated_pairs for pair in related_pairs)
 
 
 # ============================================================
