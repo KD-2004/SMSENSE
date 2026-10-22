@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .parser import URL_RE
+
 
 # ============================================================
 # 1. KNOWN CHALLENGE OBFUSCATIONS
@@ -286,162 +288,88 @@ def _detect_hinglish(tokens: list[str]) -> bool:
 
 def normalize_message(raw: str) -> NormalizationResult:
     """
-    Create a secondary normalized representation.
+    Create a secondary normalized representation without rewriting URLs.
 
-    CRITICAL DESIGN RULE:
-    raw message is never modified or discarded.
-
-    The normalized copy exists only for:
-      - obfuscation analysis
-      - semantic similarity
-      - explanation
+    Raw SMS is never modified or discarded. URL spans are preserved exactly in
+    the normalized copy so numeric URL paths are not misclassified as leetspeak
+    and callers never receive a mutated destination from this representation.
     """
 
-    lowered = raw.lower()
-
-    original_tokens = _tokens(lowered)
-
-    normalized_tokens: list[str] = []
-
+    raw = raw or ""
     detected_changes: list[str] = []
-
     leet_detected = False
     repeated_detected = False
     spelling_detected = False
 
-    # --------------------------------------------------------
-    # TOKEN-LEVEL NORMALIZATION
-    # --------------------------------------------------------
+    def normalize_plain_text(segment: str) -> str:
+        nonlocal leet_detected, repeated_detected, spelling_detected
+        lowered = segment.lower()
+        original_tokens = _tokens(lowered)
+        normalized_tokens: list[str] = []
 
-    for original in original_tokens:
-        token = original
+        for original in original_tokens:
+            token = original
 
-        # -----------------------------------------
-        # 1. EXACT KNOWN OBFUSCATION
-        # -----------------------------------------
-        if token in KNOWN_OBFUSCATIONS:
-            replacement = KNOWN_OBFUSCATIONS[token]
+            if token in KNOWN_OBFUSCATIONS:
+                replacement = KNOWN_OBFUSCATIONS[token]
+                normalized_tokens.append(replacement)
+                detected_changes.append(f"{token} -> {replacement}")
+                spelling_detected = True
+                leet_detected = True
+                continue
 
-            normalized_tokens.append(replacement)
+            if token in COMMON_MISSPELLINGS:
+                replacement = COMMON_MISSPELLINGS[token]
+                normalized_tokens.append(replacement)
+                detected_changes.append(f"{token} -> {replacement}")
+                spelling_detected = True
+                continue
 
-            detected_changes.append(
-                f"{token} -> {replacement}"
-            )
+            decoded, changed = _leet_decode(token)
+            if changed:
+                normalized_tokens.append(decoded)
+                detected_changes.append(f"{token} -> {decoded}")
+                leet_detected = True
+                continue
 
-            spelling_detected = True
-            leet_detected = True
+            reduced, repeated = _reduce_repeated_chars(token)
+            if repeated:
+                normalized_tokens.append(reduced)
+                detected_changes.append(f"{token} -> {reduced}")
+                repeated_detected = True
+                continue
 
-            continue
+            normalized_tokens.append(token)
 
-        # -----------------------------------------
-        # 2. KNOWN TYPO
-        # -----------------------------------------
-        if token in COMMON_MISSPELLINGS:
-            replacement = COMMON_MISSPELLINGS[token]
+        replacement_queue = iter(normalized_tokens)
 
-            normalized_tokens.append(replacement)
+        def replace_match(match: re.Match[str]) -> str:
+            try:
+                return next(replacement_queue)
+            except StopIteration:
+                return match.group(0)
 
-            detected_changes.append(
-                f"{token} -> {replacement}"
-            )
+        return TOKEN_RE.sub(replace_match, lowered)
 
-            spelling_detected = True
+    normalized_parts: list[str] = []
+    cursor = 0
+    for url_match in URL_RE.finditer(raw):
+        normalized_parts.append(normalize_plain_text(raw[cursor:url_match.start()]))
+        normalized_parts.append(url_match.group(0))
+        cursor = url_match.end()
+    normalized_parts.append(normalize_plain_text(raw[cursor:]))
 
-            continue
-
-        # -----------------------------------------
-        # 3. CONSERVATIVE LEETSPEAK
-        # -----------------------------------------
-        decoded, changed = _leet_decode(token)
-
-        if changed:
-            normalized_tokens.append(decoded)
-
-            detected_changes.append(
-                f"{token} -> {decoded}"
-            )
-
-            leet_detected = True
-
-            continue
-
-        # -----------------------------------------
-        # 4. REPEATED CHARACTER HANDLING
-        # -----------------------------------------
-        reduced, repeated = _reduce_repeated_chars(token)
-
-        if repeated:
-            normalized_tokens.append(reduced)
-
-            detected_changes.append(
-                f"{token} -> {reduced}"
-            )
-
-            repeated_detected = True
-
-            continue
-
-        # -----------------------------------------
-        # 5. KEEP ORIGINAL TOKEN
-        # -----------------------------------------
-        normalized_tokens.append(token)
-
-    # --------------------------------------------------------
-    # RECONSTRUCT NORMALIZED MESSAGE
-    # --------------------------------------------------------
-    #
-    # Instead of using dict(zip(tokens, processed_tokens)),
-    # which breaks when a token appears twice or gets expanded,
-    # rebuild the message by walking through the original text.
-    #
-    replacement_queue = iter(normalized_tokens)
-
-    def replace_match(match: re.Match[str]) -> str:
-        try:
-            return next(replacement_queue)
-        except StopIteration:
-            return match.group(0)
-
-    normalized = TOKEN_RE.sub(
-        replace_match,
-        lowered,
-    )
-
-    normalized = re.sub(
-        r"\s+",
-        " ",
-        normalized,
-    ).strip()
-
-    # --------------------------------------------------------
-    # OTHER SIGNALS
-    # --------------------------------------------------------
-
-    transliteration = _detect_hinglish(
-        original_tokens
-    )
-
-    punctuation_manipulation = (
-        _detect_punctuation_manipulation(raw)
-    )
-
-    spacing_manipulation = (
-        _detect_spacing_manipulation(raw)
-    )
-
-    # --------------------------------------------------------
-    # RETURN
-    # --------------------------------------------------------
+    normalized = re.sub(r"\s+", " ", "".join(normalized_parts)).strip()
+    message_without_urls = URL_RE.sub(" ", raw)
+    content_tokens = _tokens(message_without_urls.lower())
 
     return NormalizationResult(
         normalized=normalized,
-        transliteration=transliteration,
-        misspellings=list(
-            dict.fromkeys(detected_changes)
-        ),
+        transliteration=_detect_hinglish(content_tokens),
+        misspellings=list(dict.fromkeys(detected_changes)),
         leetspeak=leet_detected,
-        punctuation_manipulation=punctuation_manipulation,
-        spacing_manipulation=spacing_manipulation,
+        punctuation_manipulation=_detect_punctuation_manipulation(message_without_urls),
+        spacing_manipulation=_detect_spacing_manipulation(message_without_urls),
         repeated_chars=repeated_detected,
         concatenated_split=False,
         spelling_corrected=spelling_detected,

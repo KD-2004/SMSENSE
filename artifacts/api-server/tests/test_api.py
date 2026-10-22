@@ -113,6 +113,29 @@ def test_cors_allows_documented_local_frontend_and_rejects_unlisted_origin():
     assert "access-control-allow-origin" not in unlisted_response.headers
 
 
+def test_cors_preflight_accepts_browser_requested_headers_for_allowed_origin():
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app),
+            base_url="http://testserver",
+        ) as client:
+            return await client.options(
+                "/api/analyze",
+                headers={
+                    "Origin": "http://127.0.0.1:5500",
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "content-type,x-requested-with",
+                },
+            )
+
+    response = asyncio.run(request())
+
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://127.0.0.1:5500"
+    assert "post" in response.headers.get("access-control-allow-methods", "").lower()
+    assert "x-requested-with" in response.headers.get("access-control-allow-headers", "").lower()
+
+
 def test_api_responses_use_no_store_and_basic_security_headers():
     async def request():
         async with httpx.AsyncClient(

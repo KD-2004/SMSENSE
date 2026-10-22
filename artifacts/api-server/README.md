@@ -28,11 +28,11 @@ In a second terminal, from the repository root:
 python -m http.server 5500 --bind 127.0.0.1
 ~~~
 
-Open http://127.0.0.1:5500. The frontend defaults to http://127.0.0.1:4444. To override before the frontend script executes, define window.SMSENSE_API_BASE; do not hard-code a tunnel URL in the HTML. CORS allows only http://127.0.0.1:5500 and http://localhost:5500 by default. Set CORS_ALLOWED_ORIGINS to a comma-separated list of exact origins for a different local port. CORS is not authentication; do not expose this prototype directly to the internet without authentication, rate limiting, and network restrictions.
+Open http://127.0.0.1:5500. The frontend defaults to http://127.0.0.1:4444. To override before the frontend script executes, define window.SMSENSE_API_BASE; do not hard-code a tunnel URL in the HTML. CORS allows only http://127.0.0.1:5500 and http://localhost:5500 by default. It accepts browser-requested headers only for configured origins and restricts API methods to GET and POST. Set CORS_ALLOWED_ORIGINS to a comma-separated list of exact origins for a different local port; avoid a wildcard origin beyond local-only debugging. CORS is not authentication; do not expose this prototype directly to the internet without authentication, rate limiting, and network restrictions.
 
 ## Optional URL reputation
 
-URL reputation uses the Google Safe Browsing Lookup API only when `GOOGLE_SAFE_BROWSING_API_KEY` is set in the backend `.env` file. The API key must be obtained and configured by the project owner; none is bundled with SMSense.
+URL reputation uses the Google Safe Browsing Lookup API only when `GOOGLE_SAFE_BROWSING_API_KEY` is set in the backend `.env` file. The API key must be obtained and configured by the project owner; none is bundled with SMSense. The key is sent in the `x-goog-api-key` request header rather than a URL query parameter, to reduce accidental exposure in request logs.
 
 ~~~dotenv
 GOOGLE_SAFE_BROWSING_API_KEY=your_google_safe_browsing_api_key
@@ -56,7 +56,7 @@ OpenAPI is available at `/docs`.
 
 The primary text detector is **SMS-Shield** (`hf.co/ganmoor-ai-labs/sms-shield:Q4_K_M`), an Indian SMS scam/inbox model fine-tuned from Qwen3-4B and available as a quantized Ollama model. Its structured verdict, risk band, scam type, and red flags are returned in `model_assessment`. For messages longer than 512 characters, the backend evaluates overlapping segments and uses the highest risk segment; this is intentionally recall-oriented and should be measured for false positives.
 
-Qwen3 remains an optional post-hoc explainer and embedding provider. FAISS similarity is supporting evidence, not a phishing probability. The optional IndicBERT challenger is disabled by default and never affects production scoring; install `requirements-optional-ml.txt` before enabling it. See [MODEL_EVALUATION.md](../../MODEL_EVALUATION.md) for model-card caveats and the labelled benchmark workflow.
+Qwen3 remains an optional post-hoc explainer and embedding provider. The explainer explicitly disables thinking mode for its final JSON response and retries once without Ollama's constrained JSON mode if the model returns empty or unusable content. An explanation failure never changes or discards the fused score and label. FAISS similarity is supporting evidence, not a phishing probability. The optional IndicBERT challenger is disabled by default and never affects production scoring; install `requirements-optional-ml.txt` before enabling it. See [MODEL_EVALUATION.md](../../MODEL_EVALUATION.md) for model-card caveats and the labelled benchmark workflow.
 
 ## Optional multilingual challenger
 

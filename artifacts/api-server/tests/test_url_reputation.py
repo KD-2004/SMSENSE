@@ -24,6 +24,39 @@ def test_url_normalizer_handles_bare_domains_and_rejects_credentials():
     assert UrlReputationClient._absolute_http_url("https://example.com:invalid/") is None
 
 
+def test_google_api_key_is_sent_in_header_not_query_string(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        is_success = True
+        status_code = 200
+
+        def json(self):
+            return {"matches": []}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, **kwargs):
+            captured["url"] = url
+            captured.update(kwargs)
+            return FakeResponse()
+
+    monkeypatch.setattr("app.url_reputation.httpx.AsyncClient", lambda timeout: FakeClient())
+    client = UrlReputationClient(api_key="test-key-do-not-log")
+    result = asyncio.run(client._lookup_one("https://example.com/path"))
+
+    assert result["reputation"] == "no_match"
+    assert captured["url"] == client.ENDPOINT
+    assert captured["headers"]["x-goog-api-key"] == "test-key-do-not-log"
+    assert "params" not in captured
+    assert "test-key-do-not-log" not in captured["url"]
+
+
 def test_lookup_results_are_cached_and_only_unique_urls_are_looked_up(monkeypatch):
     client = UrlReputationClient(api_key="test-key")
     calls = []
