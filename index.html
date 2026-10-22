@@ -1056,8 +1056,7 @@
        Content    Rules      URLs
           │         │         │
           ▼         ▼         ▼
-      HinSpam   Behavior   URL Engine
-      SilverGuard
+      SMS-Shield   Behavior   URL Engine
           │
           └─────────┬──────────┘
                     │
@@ -1068,7 +1067,7 @@
                   FAISS
                     │
                     ▼
-             RULE-BASED FUSION
+             EVIDENCE FUSION
                     │
                     ▼
               RISK SCORE 0-100
@@ -1126,7 +1125,11 @@
 
     <script>
         // ==================== CONFIGURATION ====================
-        const API_BASE = window.SMSENSE_API_BASE || "https://winter-rewrite-amber.ngrok-free.dev";
+        // Local-first default. Override before this script loads if your local port differs.
+        // Example: window.SMSENSE_API_BASE = "http://127.0.0.1:4444"
+        const API_BASE = String(
+            window.SMSENSE_API_BASE ?? "http://127.0.0.1:4444"
+        ).replace(/\/+$/, "");
 
         // ==================== STATE ====================
         let currentAnalysis = null;
@@ -1215,8 +1218,7 @@
             try {
                 const headers = new Headers(options.headers || {});
 
-                // Required for ngrok free browser endpoints.
-                headers.set('ngrok-skip-browser-warning', 'true');
+                // No tunnel-specific headers are required for local development.
 
                 if (options.body && !headers.has('Content-Type')) {
                     headers.set('Content-Type', 'application/json');
@@ -1597,6 +1599,7 @@
             const suspiciousPhrases = Array.isArray(result.suspicious_phrases) ? result.suspicious_phrases : [];
             const postHoc = result.post_hoc || {};
             const modelSignals = result.explanation?.model_signals || [];
+            const modelAssessment = result.model_assessment || {};
             const normalized = result.normalized_message || '';
             const raw = result.raw_message || '';
             const obfuscation = result.obfuscation || {};
@@ -1621,6 +1624,18 @@
                 </div>
                 <p style="font-size:12px; color:var(--text-muted); margin-top:12px;">Rule-based evidence score, not a calibrated probability.</p>
             </div>
+
+            ${modelAssessment.model ? `<div class="card">
+                <div class="card-title">Primary Model Assessment — ${escapeHtml(modelAssessment.model)}</div>
+                <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+                    <strong>Model verdict: ${escapeHtml(modelAssessment.verdict || 'unknown').toUpperCase()}</strong>
+                    <span>Model risk score: ${Number(modelAssessment.risk ?? 0)} / 100</span>
+                    <span style="color:var(--text-muted); font-size:12px;">Not a calibrated probability</span>
+                </div>
+                ${modelAssessment.explanation ? `<p>${escapeHtml(modelAssessment.explanation)}</p>` : ''}
+                ${Array.isArray(modelAssessment.red_flags) && modelAssessment.red_flags.length ? `<div style="margin-top:10px;"><strong>Model red flags</strong><ul style="padding-left:20px; margin-top:6px;">${modelAssessment.red_flags.map(flag => `<li>${escapeHtml(flag)}</li>`).join('')}</ul></div>` : '<p class="text-muted">The primary model reported no specific red flags.</p>'}
+                ${Number(modelAssessment.segments_analyzed ?? 1) > 1 ? `<p style="font-size:12px; color:var(--text-muted); margin-top:8px;">Long message: analyzed ${Number(modelAssessment.segments_analyzed)} overlapping segments; final model risk uses the highest segment score.</p>` : ''}
+            </div>` : ''}
 
             <div class="card">
                 <div class="card-title">Evidence Breakdown</div>
@@ -1657,7 +1672,7 @@
             <div class="card">
                 <div class="card-title">Model Evidence</div>
                 ${renderModelSignals(modelSignals)}
-                <p style="font-size:12px; color:var(--text-muted); margin-top:12px;">Pretrained models provide evidence to the rule-based fusion engine. They do not independently determine the final security label.</p>
+                <p style="font-size:12px; color:var(--text-muted); margin-top:12px;">SMS-Shield is the primary model. Its score is combined with URL, sender, behaviour and obfuscation evidence. Optional IndicBERT is diagnostic-only and does not affect the final score.</p>
             </div>
 
             <div class="card">
@@ -1996,7 +2011,7 @@
                 document.getElementById('view-dashboard').innerHTML = `
                     <div class="alert">
                         <strong>SMSense backend is offline.</strong><br>
-                        Start the FastAPI server at: <code>https://winter-rewrite-amber.ngrok-free.dev</code>
+                        Start the FastAPI server at <code>http://127.0.0.1:4444</code>, then reload this page.
                     </div>`;
             }
         }

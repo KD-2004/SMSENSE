@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,6 +42,13 @@ logger = logging.getLogger("smsense")
 # FASTAPI APPLICATION
 # ============================================================
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Run startup diagnostics using FastAPI's lifespan interface."""
+    await startup_diagnostics()
+    yield
+
+
 app = FastAPI(
     title="SMSense API",
     description=(
@@ -48,6 +56,7 @@ app = FastAPI(
         "vernacular phishing detection API."
     ),
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 
@@ -86,7 +95,6 @@ storage = Storage()
 # STARTUP DIAGNOSTICS
 # ============================================================
 
-@app.on_event("startup")
 async def startup_diagnostics() -> None:
     """
     Log the configured detection stack at startup.
@@ -130,17 +138,17 @@ async def startup_diagnostics() -> None:
     )
 
     logger.info(
-        "Configured HinSpam model: %s",
-        settings.hinspam_model,
+        "Configured primary SMS-Shield classifier: %s",
+        settings.sms_shield_model,
     )
 
     logger.info(
-        "Configured SilverGuard model: %s",
-        settings.silverguard_model,
+        "Optional IndicBERT challenger enabled: %s",
+        settings.indicbert_enabled,
     )
 
     logger.info(
-        "Hugging Face runtime: available=%s detail=%s",
+        "Optional Hugging Face challenger runtime: available=%s detail=%s",
         package_ok,
         package_detail,
     )
@@ -222,23 +230,20 @@ async def health() -> HealthResponse:
         )
 
     # --------------------------------------------------------
-    # Hugging Face models
+    # Primary SMS-Shield classifier and optional HF challenger
     # --------------------------------------------------------
 
     try:
-        hf_status = (
-            await service.hf.detailed_status()
-        )
+        sms_shield_ok, sms_shield_detail = await service.sms_shield.status()
+    except Exception as exc:
+        sms_shield_ok = False
+        sms_shield_detail = f"SMS-Shield status check failed: {type(exc).__name__}"
+
+    try:
+        hf_status = await service.hf.detailed_status()
     except Exception as exc:
         hf_status = {
-            "hinspam": (
-                False,
-                f"Status check failed: {type(exc).__name__}",
-            ),
-            "silverguard": (
-                False,
-                f"Status check failed: {type(exc).__name__}",
-            ),
+            "indicbert": (False, f"Status check failed: {type(exc).__name__}"),
         }
 
     # --------------------------------------------------------
@@ -293,14 +298,9 @@ async def health() -> HealthResponse:
             "detail": ollama_embedding_detail,
         },
 
-        "hugging_face_hinspam": {
-            "available": hf_status["hinspam"][0],
-            "detail": hf_status["hinspam"][1],
-        },
-
-        "hugging_face_silverguard": {
-            "available": hf_status["silverguard"][0],
-            "detail": hf_status["silverguard"][1],
+        "sms_shield_classifier": {
+            "available": sms_shield_ok,
+            "detail": sms_shield_detail,
         },
 
         "faiss": {
@@ -314,15 +314,28 @@ async def health() -> HealthResponse:
         },
     }
 
-    overall_ok = all(
-        bool(component["available"])
-        for component in components.values()
+    if settings.indicbert_enabled:
+        indicbert_ok, indicbert_detail = hf_status.get(
+            "indicbert",
+            (False, "Optional IndicBERT challenger status unavailable"),
+        )
+        components["hugging_face_indicbert"] = {
+            "available": indicbert_ok,
+            "detail": indicbert_detail,
+        }
+
+    # The core service requires the primary SMS-Shield model and writable
+    # SQLite history. Qwen3 explanation/embedding, FAISS similarity, and the
+    # optional IndicBERT challenger are diagnostic or enhancement components;
+    # their absence must not report primary detection as unavailable.
+    core_ok = bool(components["sms_shield_classifier"]["available"]) and bool(
+        components["sqlite"]["available"]
     )
 
     return HealthResponse(
         status=(
             "ok"
-            if overall_ok
+            if core_ok
             else "degraded"
         ),
         components=components,

@@ -45,6 +45,12 @@ class SimilarityStore:
     # INDEX MANAGEMENT
     # ------------------------------------------------------------------
 
+    @property
+    def available(self) -> bool:
+        """Backward-compatible readiness property for health/tests."""
+        ok, _detail = self.status()
+        return ok
+
     def _load_index(self):
         """Load and cache the FAISS index safely."""
         if self.faiss is None:

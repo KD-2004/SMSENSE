@@ -373,63 +373,16 @@ def _credential_request(text: str) -> bool:
     if not related_pairs:
         return False
 
-    # --------------------------------------------------------
-    # If negation is near the action/credential pair,
-    # it overrides the positive request.
-    # --------------------------------------------------------
-
+    # Negation applies to a specific nearby action/credential pair only.
+    # Continue checking other pairs: a message may contain both a safety
+    # warning and a separate request for another secret.
+    negated_pairs: set[tuple[int, int]] = set()
     for action_index, credential_index in related_pairs:
-
-        lower = min(
-            action_index,
-            credential_index,
-        )
-
-        upper = max(
-            action_index,
-            credential_index,
-        )
-
-        for negation_index in negation_positions:
-
-            # Negation must be reasonably close to the
-            # request phrase.
-            if (
-                lower - 3
-                <= negation_index
-                <= upper + 3
-            ):
-                return False
-
-    # --------------------------------------------------------
-    # Roman-Hinglish explicit safety pattern:
-    #
-    # "OTP mat bhejo"
-    # "PIN mat batao"
-    # "OTP matt bhej"
-    # --------------------------------------------------------
-
-    for credential_index in credential_positions:
-
-        start = max(
-            0,
-            credential_index - 5,
-        )
-
-        end = min(
-            len(tokens),
-            credential_index + 6,
-        )
-
-        window = tokens[start:end]
-
-        if (
-            "mat" in window
-            or "matt" in window
-        ):
-            for action in REQUEST_ACTIONS:
-                if action in window:
-                    return False
+        # Negation should attach to the request action, not merely to any
+        # nearby credential. Otherwise a short warning like "Never share OTP.
+        # Send PIN" can incorrectly suppress the separate positive request.
+        if any(abs(n - action_index) <= 2 for n in negation_positions):
+            negated_pairs.add((action_index, credential_index))
 
     # --------------------------------------------------------
     # At this point, we have:
@@ -440,7 +393,7 @@ def _credential_request(text: str) -> bool:
     # Therefore treat it as an actual request.
     # --------------------------------------------------------
 
-    return True
+    return any(pair not in negated_pairs for pair in related_pairs)
 
 
 # ============================================================
@@ -1024,9 +977,11 @@ def url_signals(
                 claimed_brands.add(brand)
                 break
 
+    # parsed.domains is unique per host for summary/reporting; url_domains
+    # deliberately stays one-to-one with urls for per-URL checks.
     for raw_url, domain in zip(
         parsed.urls,
-        parsed.domains,
+        parsed.url_domains,
     ):
         lowered_url = raw_url.lower()
         lowered_domain = domain.lower()

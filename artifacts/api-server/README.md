@@ -1,48 +1,87 @@
-# BharatPhish Guard Backend
+# SMSense API Backend
 
-FastAPI REST backend for phishing and scam analysis of Indian SMS messages. It is designed to sit behind an existing React/Lovable frontend; it does not serve a frontend and never exposes Ollama or model credentials to the browser.
+FastAPI backend for Indian SMS spam, scam and phishing analysis. It runs locally beside the static frontend.
 
-## Run locally
+## Local development (Windows PowerShell)
 
-```bash
+From the repository root, create and activate a virtual environment, install the backend dependencies, and copy the example configuration:
+
+~~~powershell
 cd artifacts/api-server
 python -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload
-```
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
 
-The workspace workflow runs the same service on the configured `PORT` (8080 in the artifact preview). OpenAPI docs are available at `/api/docs`.
+# Install/download the primary SMS-Shield model once (about 2.4 GB quantized).
+ollama run hf.co/ganmoor-ai-labs/sms-shield:Q4_K_M
+# Once the model loads, enter /bye to return to PowerShell.
 
-## Model behavior
+python -m uvicorn app.main:app --host 127.0.0.1 --port 4444 --reload
+~~~
 
-The service uses pretrained HinSpam and SilverGuard adapters, Qwen3 via a private Ollama connection for post-hoc explanations, and Qwen3 embeddings plus FAISS for similarity evidence. Model adapters fail closed: if a required model is not available, `/api/analyze` returns HTTP 503 with a clear `MODEL_UNAVAILABLE` state instead of fabricating a security result. The Hugging Face adapters lazily download and cache the configured pretrained weights on first health/analyze use.
+The backend loads the .env file from this directory regardless of the process working directory. Keep the backend terminal open.
 
-## API
+In a second terminal, from the repository root:
 
-- `GET /api/health` reports API component state for Ollama, Hugging Face, FAISS, and SQLite.
-- `POST /api/analyze` accepts `{ "message": "...", "sender": "...", "timestamp": "..." }`.
-- `POST /api/adversarial-test` evaluates a bounded batch and returns invariants.
-- `GET /api/history`, `GET /api/history/{id}`, and `GET /api/stats` expose SQLite-backed history.
-- `POST /api/feedback` stores `{ "analysis_id": 1, "helpful": true, "note": "..." }`.
+~~~powershell
+python -m http.server 5500 --bind 127.0.0.1
+~~~
 
-## FAISS seed index
+Open http://127.0.0.1:5500. The frontend defaults to http://127.0.0.1:4444. To override before the frontend script executes, define window.SMSENSE_API_BASE; do not hard-code a tunnel URL in the HTML. CORS is permissive for local prototyping; tighten allowed origins and add authentication before exposing the API to others.
 
-`data/seed_scam_examples.json` is explicitly labeled demo seed data. Build its local FAISS index only after Ollama and `qwen3-embedding:0.6b` are available:
+## API endpoints
 
-```bash
+- `GET /api/healthz`: quick reachability check.
+- `GET /api/health`: component readiness.
+- `POST /api/analyze`: analyse one message and save it to local SQLite history.
+- `POST /api/adversarial-test`: bounded multi-message analysis without normal history writes.
+
+OpenAPI is available at `/docs`.
+
+## Models and evidence
+
+The primary text detector is **SMS-Shield** (`hf.co/ganmoor-ai-labs/sms-shield:Q4_K_M`), an Indian SMS scam/inbox model fine-tuned from Qwen3-4B and available as a quantized Ollama model. Its structured verdict, risk band, scam type, and red flags are returned in `model_assessment`. For messages longer than 512 characters, the backend evaluates overlapping segments and uses the highest risk segment; this is intentionally recall-oriented and should be measured for false positives.
+
+Qwen3 remains an optional post-hoc explainer and embedding provider. FAISS similarity is supporting evidence, not a phishing probability. The optional IndicBERT challenger is disabled by default and never affects production scoring; install `requirements-optional-ml.txt` before enabling it. See [MODEL_EVALUATION.md](../../MODEL_EVALUATION.md) for model-card caveats and the labelled benchmark workflow.
+
+## Optional multilingual challenger
+
+The default installation does not install PyTorch/Transformers. To run the optional IndicBERT comparison, activate the virtual environment, run `python -m pip install -r requirements-optional-ml.txt`, set `INDICBERT_ENABLED=true` in `.env`, and restart the backend. IndicBERT adds substantial memory use and reports diagnostic scores only; it does not change the fused risk score.
+
+## FAISS index
+
+The bundled seed set is demonstration data, not a validated reference corpus. Rebuild after Ollama and the configured embedding model are available:
+
+```powershell
 python tools/build_faiss_index.py
 ```
 
-If the index is missing or empty, health and analysis expose similarity as unavailable and do not assign similarity points.
+Do not treat the small demo index as a validated detector. Before using similarity in production scoring, benchmark it on a larger labelled corpus.
 
-## Live integration tests
+## Labelled evaluation
 
-The default test suite does not require model downloads. Run live validation after configuring both Ollama models and the Hugging Face cache:
+To measure accuracy against independently reviewed ground-truth labels, fill in data/evaluation_template.csv and follow the [accuracy and robustness guide](../../MODEL_EVALUATION.md). With the backend running, from this directory run:
 
-```bash
-RUN_REAL_MODEL_TESTS=true pytest -m integration -q
+~~~powershell
+python tools/evaluate_dataset.py --csv data/evaluation.csv --base-url http://127.0.0.1:4444 --threshold 50
+~~~
+
+The runner uses /api/adversarial-test in batches and omits message text from the exported prediction file. Tune any threshold on validation data only; use an untouched test set for the final report. Do not present the 0–100 fused risk score as a probability.
+
+## Tests
+
+Run unit tests without downloading the large pretrained models:
+
+```powershell
+python -m pytest -q
 ```
 
-Rule-based fusion uses transparent caps: Content 30, URL 20, Behavior 20, Sender 15, Obfuscation 10, Similarity 5. KYC, OTP, a URL, or a bank name alone are not treated as proof of phishing. Thresholds (`RISK_LOW_THRESHOLD`, `RISK_SUSPICIOUS_THRESHOLD`, `RISK_HIGH_RISK_THRESHOLD`) and model endpoints are configuration values.
+Live-model checks are opt-in:
+
+```powershell
+$env:RUN_REAL_MODEL_TESTS = "true"
+python -m pytest -m integration -q
+```
+
+No accuracy claims should be made until predictions are evaluated against independently verified labels.

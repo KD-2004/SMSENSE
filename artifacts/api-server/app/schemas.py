@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 Label = Literal["LOW", "SUSPICIOUS", "HIGH RISK", "CRITICAL"]
 
@@ -9,6 +9,14 @@ class AnalyzeRequest(BaseModel):
     message: str = Field(min_length=1, max_length=10_000)
     sender: str | None = Field(default=None, max_length=320)
     timestamp: datetime | None = None
+
+    @field_validator("message")
+    @classmethod
+    def reject_blank_messages(cls, value: str) -> str:
+        """Reject blank-only input without mutating a valid original SMS."""
+        if not value.strip():
+            raise ValueError("message must contain at least one non-whitespace character")
+        return value
 
 
 class EvidenceGroups(BaseModel):
@@ -38,6 +46,10 @@ class AnalysisResponse(BaseModel):
     language: str
     raw_message: str
     normalized_message: str
+    sender: str | None = None
+    model_assessment: dict[str, Any] = Field(default_factory=dict)
+    similarity: dict[str, Any] = Field(default_factory=dict)
+    explanation_status: dict[str, Any] | None = None
     evidence: EvidenceGroups
     suspicious_phrases: list[str]
     url_analysis: dict[str, Any]
