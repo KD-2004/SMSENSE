@@ -61,26 +61,33 @@ app = FastAPI(
 
 
 # ============================================================
-# CORS
+# CORS AND RESPONSE SECURITY HEADERS
 # ============================================================
 #
-# Hackathon/local prototype configuration.
-#
-# IMPORTANT:
-# - The browser frontend is allowed to call the API.
-# - We intentionally use allow_credentials=False because
-#   this API is not using browser cookies/auth sessions.
-#
-# For production, replace "*" with the actual frontend origin.
+# Only local development frontends are allowed by default. Override
+# CORS_ALLOWED_ORIGINS with comma-separated exact origins when hosting
+# the frontend elsewhere. CORS is not authentication; keep the API bound
+# to loopback unless it is protected by an authenticated deployment layer.
 # ============================================================
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=list(settings.cors_allowed_origins),
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    """Avoid caching SMS/history responses and apply basic browser protections."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Cache-Control", "no-store")
+    return response
 
 
 # ============================================================
