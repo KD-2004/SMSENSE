@@ -148,7 +148,7 @@ async def startup_diagnostics() -> None:
     )
 
     logger.info(
-        "Hugging Face runtime: available=%s detail=%s",
+        "Optional Hugging Face challenger runtime: available=%s detail=%s",
         package_ok,
         package_detail,
     )
@@ -324,15 +324,18 @@ async def health() -> HealthResponse:
             "detail": indicbert_detail,
         }
 
-    overall_ok = all(
-        bool(component["available"])
-        for component in components.values()
+    # The core service requires the primary SMS-Shield model and writable
+    # SQLite history. Qwen3 explanation/embedding, FAISS similarity, and the
+    # optional IndicBERT challenger are diagnostic or enhancement components;
+    # their absence must not report primary detection as unavailable.
+    core_ok = bool(components["sms_shield_classifier"]["available"]) and bool(
+        components["sqlite"]["available"]
     )
 
     return HealthResponse(
         status=(
             "ok"
-            if overall_ok
+            if core_ok
             else "degraded"
         ),
         components=components,
