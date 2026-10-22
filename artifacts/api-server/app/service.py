@@ -2,7 +2,7 @@ from typing import Any
 import logging
 
 from .fusion import fuse
-from .models import HuggingFaceModels, ModelUnavailableError, OllamaClient
+from .models import HuggingFaceModels, ModelSignal, ModelUnavailableError, OllamaClient, SmsShieldClient
 from .normalizer import normalize_message
 from .parser import parse_message
 from .rules import behavior_signals, language_hint, url_signals
@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 class AnalysisService:
     def __init__(self) -> None:
         self.ollama = OllamaClient()
+        self.sms_shield = SmsShieldClient()
         self.hf = HuggingFaceModels()
         self.similarity = SimilarityStore()
 
@@ -28,16 +29,30 @@ class AnalysisService:
         normalized = normalize_message(message)
         behavior = behavior_signals(message)
 
-        # Required content classifiers must be available; never invent fallback scores.
-        model_signals = await self.hf.signals(message, sender)
-        content_signal = min(
-            30.0,
-            sum(
-                float(signal.score)
-                for signal in model_signals
-                if signal.available and signal.name in {"HinSpam", "SilverGuard"}
-            ),
-        )
+        # SMS-Shield is the primary Indian SMS model. Its 0–100 risk field is
+        # model-provided evidence, not a calibrated probability. Keep its content
+        # contribution bounded at 30/100 until our labelled benchmark justifies
+        # changing the fusion weights.
+        model_assessment = await self.sms_shield.classify(message, sender)
+        content_signal = float(model_assessment["risk"]) * 0.30
+        model_signals = [
+            ModelSignal(
+                "SMS-Shield",
+                True,
+                float(model_assessment["risk"]) * 0.15,
+                (
+                    f"Primary model risk={model_assessment['risk']}/100; "
+                    f"verdict={model_assessment['verdict']}; "
+                    f"segments={model_assessment['segments_analyzed']}"
+                ),
+            )
+        ]
+        # Optional IndicBERT remains a diagnostic challenger only. It is not
+        # included in production fusion because its performance on our own
+        # held-out SMS set has not yet been established.
+        challenger_signal = await self.hf.challenger_signal(message)
+        if challenger_signal is not None:
+            model_signals.append(challenger_signal)
 
         # Similarity is supporting evidence, not a probability. The store owns
         # metric-aware distance conversion. Keep core text analysis usable if the
@@ -70,7 +85,16 @@ class AnalysisService:
         payload: dict[str, Any] = {
             "risk_score": result.score,
             "label": result.label,
-            "category": result.category,
+            "category": (
+                result.category
+                if result.category != "GENERAL_MESSAGE"
+                else str(
+                    model_assessment.get("scam_type")
+                    if model_assessment.get("risk", 0) >= 50 and model_assessment.get("scam_type")
+                    else model_assessment.get("category") or "GENERAL_MESSAGE"
+                ).upper().replace(" ", "_")
+            ),
+            "model_assessment": model_assessment,
             "language": language_hint(message),
             "raw_message": parsed.raw,
             "normalized_message": normalized.normalized,
