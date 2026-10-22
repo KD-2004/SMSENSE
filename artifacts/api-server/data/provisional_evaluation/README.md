@@ -19,6 +19,12 @@ These labels were inferred from message text and are **not independently verifie
 - For a research evaluation, use independently reviewed labels and retain ambiguous cases for adjudication.
 - Use `tools/prepare_evaluation_csv.py` to prepare your actual dataset, then fill the label column using evidence external to SMSense's own predictions.
 
+## Files in this directory
+
+- `smsense_200_evaluation_provisional.csv`: evaluator-compatible `message,label` file, using the provisional suggestions.
+- `smsense_200_provisional_labels.csv`: same suggestions with IDs and review metadata; `label_confidence` is `UNVERIFIED` and every row is marked for review.
+- `smsense_200_label_review.csv`: review worksheet with a blank `label` field for independently adjudicated ground truth, alongside the provisional suggestion.
+
 ## Run a pipeline smoke test
 
 From `artifacts/api-server/`, with SMSense running at your configured API base URL:
