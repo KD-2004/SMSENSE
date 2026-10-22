@@ -1,4 +1,6 @@
-from fastapi.testclient import TestClient
+import asyncio
+
+import httpx
 
 import app.main as api
 
@@ -40,8 +42,14 @@ def _analysis_result(message: str, sender: str | None = None) -> dict:
 
 
 def test_healthz_is_lightweight_and_reachable():
-    with TestClient(api.app) as client:
-        response = client.get("/api/healthz")
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app),
+            base_url="http://testserver",
+        ) as client:
+            return await client.get("/api/healthz")
+
+    response = asyncio.run(request())
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
@@ -53,11 +61,17 @@ def test_analyze_endpoint_preserves_schema_fields(monkeypatch):
     monkeypatch.setattr(api.service, "analyze", fake_analyze)
     monkeypatch.setattr(api.storage, "save_analysis", lambda result: 321)
 
-    with TestClient(api.app) as client:
-        response = client.post(
-            "/api/analyze",
-            json={"message": "  Please review this text.  ", "sender": "PERSONAL"},
-        )
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app),
+            base_url="http://testserver",
+        ) as client:
+            return await client.post(
+                "/api/analyze",
+                json={"message": "  Please review this text.  ", "sender": "PERSONAL"},
+            )
+
+    response = asyncio.run(request())
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -69,7 +83,13 @@ def test_analyze_endpoint_preserves_schema_fields(monkeypatch):
 
 
 def test_analyze_endpoint_rejects_whitespace_only_message():
-    with TestClient(api.app) as client:
-        response = client.post("/api/analyze", json={"message": "   \n\t"})
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app),
+            base_url="http://testserver",
+        ) as client:
+            return await client.post("/api/analyze", json={"message": "   \n\t"})
+
+    response = asyncio.run(request())
 
     assert response.status_code == 422
