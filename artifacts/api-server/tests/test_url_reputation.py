@@ -110,3 +110,31 @@ def test_no_match_and_not_checked_do_not_add_reputation_score():
             },
         )
         assert result.evidence["url"] == 0.0
+
+
+
+def test_url_lookup_limit_is_enforced_and_skipped_urls_stay_unchecked(monkeypatch):
+    client = UrlReputationClient(api_key="test-key")
+    client.MAX_URLS_PER_MESSAGE = 2
+    calls = []
+
+    async def fake_lookup(url):
+        calls.append(url)
+        return {
+            "reputation": "no_match",
+            "provider": client.PROVIDER,
+            "threat_types": [],
+            "detail": "test no match",
+        }
+
+    monkeypatch.setattr(client, "_lookup_one", fake_lookup)
+    urls = [f"https://site{i}.example/path" for i in range(3)]
+    results = asyncio.run(client.check_urls(urls))
+
+    assert calls == urls[:2]
+    assert [result["reputation"] for result in results] == [
+        "no_match",
+        "no_match",
+        "not_checked",
+    ]
+    assert "limit" in results[2]["detail"].lower()
