@@ -35,6 +35,8 @@ Avoid leaking near-duplicate templates between training, validation and test set
 
 The current default combines HinSpam (designed for Hinglish spam/ham) with SilverGuard (an Indian SMS scam classifier). Their model cards document different training and input assumptions, so neither should be treated as universally best for every language or scenario. The SilverGuard card notes weaker reliability for very short messages and that it does not analyze embedded URLs; URL parsing and rules therefore remain separate evidence.
 
+The repository now supports it as an **optional diagnostic challenger**, disabled by default. In `artifacts/api-server/.env`, set `INDICBERT_ENABLED=true`, restart the backend, and evaluate a labelled dataset; it reports a separate model score but does not alter the fused live score. This model is about 0.3B parameters according to its model card, so it needs additional RAM and can increase latency. Turn it off if your machine struggles.
+
 A multilingual IndicBERT-based scam classifier is another possible challenger for Hindi, Roman Hindi/Hinglish, and other Indian languages: [IndicBERT scam classifier v2](https://huggingface.co/anmolshrivastav/indicbert-scam-classifier-v2). Its model-card accuracy figures are author-reported results on a manually curated set; they are not independently verified here and must not be compared directly with HinSpam or SilverGuard scores. Do not add another always-on model just because its published headline metric is higher. First confirm its label mapping, license, dependencies, memory/latency, and performance on the same held-out SMSense test set, broken down by language and scam scenario.
 
 ## Threshold and model decisions
