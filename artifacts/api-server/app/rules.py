@@ -378,28 +378,11 @@ def _credential_request(text: str) -> bool:
     # warning and a separate request for another secret.
     negated_pairs: set[tuple[int, int]] = set()
     for action_index, credential_index in related_pairs:
-        lower = min(action_index, credential_index)
-        upper = max(action_index, credential_index)
-        if any(lower - 3 <= n <= upper + 3 for n in negation_positions):
+        # Negation should attach to the request action, not merely to any
+        # nearby credential. Otherwise a short warning like "Never share OTP.
+        # Send PIN" can incorrectly suppress the separate positive request.
+        if any(abs(n - action_index) <= 2 for n in negation_positions):
             negated_pairs.add((action_index, credential_index))
-
-    # --------------------------------------------------------
-    # Roman-Hinglish explicit safety pattern:
-    #
-    # "OTP mat bhejo"
-    # "PIN mat batao"
-    # "OTP matt bhej"
-    # --------------------------------------------------------
-
-    for credential_index in credential_positions:
-        start = max(0, credential_index - 5)
-        end = min(len(tokens), credential_index + 6)
-        window = tokens[start:end]
-
-        if "mat" in window or "matt" in window:
-            for action_index, action_token in enumerate(tokens):
-                if action_token in REQUEST_ACTIONS and abs(action_index - credential_index) <= MAX_DISTANCE:
-                    negated_pairs.add((action_index, credential_index))
 
     # --------------------------------------------------------
     # At this point, we have:
