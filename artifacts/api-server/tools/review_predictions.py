@@ -119,7 +119,7 @@ def analyze_csv(csv_path: Path, threshold: float = 50.0, include_message_text: b
         http_status = str(row.get("http_status") or "").strip()
         err = row.get("error") or ""
         body = _json(row.get("response_json"))
-        if not result and isinstance(body.get("detail"), dict):
+        if result.get("risk_score") is None and isinstance(body.get("detail"), dict):
             err = err or str(body["detail"].get("message") or body["detail"])
         success = bool(result) and (not status or status in {"OK", "SUCCESS", "COMPLETED"}) and (not http_status or http_status == "200")
 

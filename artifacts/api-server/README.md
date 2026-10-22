@@ -100,3 +100,16 @@ The tool writes review_report.md (human-readable score distributions, failure ca
 Recognized verified-label columns are ground_truth, verified_label, actual_label, true_label, and expected_label. When one is present and contains recognized labels, precision, recall, specificity, F1, accuracy, and balanced accuracy are reported. Without verified labels, the tool explicitly states that it cannot measure accuracy from predictions alone.
 
 The report flags failed API calls, model verdict/risk disagreement, model-risk/fusion-score gaps, missing sender metadata, unchecked URL reputation, and unavailable similarity. These findings are manual-review signals, not proof that an individual prediction is wrong.
+
+
+## Run a sample dataset and generate a detailed report in one command
+
+Start the API first, then from the backend folder run:
+
+~~~powershell
+python tools/run_sample_and_report.py --csv "C:\path\to\your_sample.csv" --out-dir data\sample-run
+~~~
+
+The input needs a column named message. Add sender when available. For measured accuracy, include a verified ground-truth column such as ground_truth or label, using HAM/LEGITIMATE/BENIGN or SCAM/SPAM/PHISHING/FRAUD labels. The runner calls the no-history adversarial endpoint one message at a time, records each success/failure and continues even if an item fails, then writes predictions.csv, review_report.md, review_rows.csv, and review_summary.json.
+
+No ground-truth labels means no accuracy claim: the report instead lists score/model disagreements, failures, language/scenario distribution, and missing evidence. Keep the output folder private because predictions.csv contains original SMS text and model responses.
