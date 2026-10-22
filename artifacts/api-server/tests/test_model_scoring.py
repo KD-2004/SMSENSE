@@ -261,3 +261,49 @@ def test_sms_shield_does_not_accept_unsupported_verdict_without_valid_risk():
         pass
     else:
         raise AssertionError("Missing/invalid risk must remain an error")
+
+
+
+def test_known_url_reputation_is_exposed_and_affects_fused_score(monkeypatch):
+    service = AnalysisService()
+
+    async def fake_classify(message, sender):
+        return _assessment(risk=15)
+
+    async def no_challenger(raw):
+        return None
+
+    async def no_similarity(raw, normalized, ollama):
+        return {
+            "available": False,
+            "matches": [],
+            "top_distance": None,
+            "similarity_signal": 0.0,
+            "detail": "disabled in test",
+        }
+
+    async def reputation_match(urls):
+        assert urls == ["https://bad.example/login"]
+        return [
+            {
+                "url": urls[0],
+                "reputation": "malicious",
+                "provider": "Google Safe Browsing",
+                "threat_types": ["SOCIAL_ENGINEERING"],
+                "detail": "test threat-list match",
+            }
+        ]
+
+    monkeypatch.setattr(service.sms_shield, "classify", fake_classify)
+    monkeypatch.setattr(service.hf, "challenger_signal", no_challenger)
+    monkeypatch.setattr(service.similarity, "search", no_similarity)
+    monkeypatch.setattr(service.url_reputation, "check_urls", reputation_match)
+
+    result = asyncio.run(
+        service.analyze("Review this link https://bad.example/login", None, post_hoc=False)
+    )
+
+    assert result["url_analysis"]["urls"][0]["reputation"] == "malicious"
+    assert result["url_analysis"]["urls"][0]["threat_types"] == ["SOCIAL_ENGINEERING"]
+    assert result["evidence"]["url"] >= 12.0
+    assert "url_reputation_not_checked" not in result["decision_diagnostics"]["data_gaps"]
