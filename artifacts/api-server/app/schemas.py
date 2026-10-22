@@ -38,6 +38,9 @@ class AnalysisResponse(BaseModel):
     language: str
     raw_message: str
     normalized_message: str
+    sender: str | None = None
+    similarity: dict[str, Any] = Field(default_factory=dict)
+    explanation_status: dict[str, Any] | None = None
     evidence: EvidenceGroups
     suspicious_phrases: list[str]
     url_analysis: dict[str, Any]
