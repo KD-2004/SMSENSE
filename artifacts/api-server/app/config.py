@@ -1,11 +1,21 @@
 from dataclasses import dataclass
 import os
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # Allows source inspection before optional deps are installed.
+    load_dotenv = None
+
+if load_dotenv is not None:
+    # Load the backend's local .env regardless of the process working directory.
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
 
 
 @dataclass(frozen=True)
 class Settings:
-    port: int = int(os.getenv("PORT", "8080"))
-    database_path: str = os.getenv("DATABASE_PATH", "./data/bharatphish_guard.sqlite3")
+    port: int = int(os.getenv("PORT", "4444"))
+    database_path: str = os.getenv("DATABASE_PATH", "./data/smsense.sqlite3")
     faiss_index_path: str = os.getenv("FAISS_INDEX_PATH", "./data/scam_examples.index")
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
     ollama_chat_model: str = os.getenv("OLLAMA_CHAT_MODEL", "qwen3:8b")
