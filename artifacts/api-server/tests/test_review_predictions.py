@@ -30,8 +30,8 @@ def test_review_predictions_reports_gaps_without_claiming_accuracy(tmp_path):
         },
         {
             "input_row": "11", "status": "HTTP_ERROR", "http_status": "503",
-            "error": "model failed", "message": "test", "predicted_label": "",
-            "risk_score": "", "response_json": "",
+            "error": "", "message": "test", "predicted_label": "",
+            "risk_score": "", "response_json": json.dumps({"detail": {"code": "MODEL_UNAVAILABLE", "message": "unsupported model verdict"}}),
         },
     ]
     source = tmp_path / "sample.csv"
@@ -45,6 +45,7 @@ def test_review_predictions_reports_gaps_without_claiming_accuracy(tmp_path):
     assert summary["model_risk_at_least_50_final_below_threshold"] == 1
     assert summary["messages_without_sender"] == 1
     assert summary["similarity_unavailable_count"] == 1
+    assert summary["failed_cases"][0]["error"] == "unsupported model verdict"
     assert "url_reputation_not_checked" in result["rows"][0]["review_reasons"]
     out = tmp_path / "report"
     write_report(result, out, 50.0, False)
