@@ -48,6 +48,7 @@ class AnalysisResponse(BaseModel):
     normalized_message: str
     sender: str | None = None
     model_assessment: dict[str, Any] = Field(default_factory=dict)
+    decision_diagnostics: dict[str, Any] = Field(default_factory=dict)
     similarity: dict[str, Any] = Field(default_factory=dict)
     explanation_status: dict[str, Any] | None = None
     evidence: EvidenceGroups
