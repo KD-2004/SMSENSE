@@ -22,6 +22,8 @@ class Settings:
     ollama_embedding_model: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "qwen3-embedding:0.6b")
     hinspam_model: str = os.getenv("HINSPAM_MODEL", "Keshav0av/HinSpam-spam-detection")
     silverguard_model: str = os.getenv("SILVERGUARD_MODEL", "tanishqmudaliar/SilverGuard")
+    indicbert_model: str = os.getenv("INDICBERT_MODEL", "anmolshrivastav/indicbert-scam-classifier-v2")
+    indicbert_enabled: bool = os.getenv("INDICBERT_ENABLED", "false").lower() == "true"
     model_load_on_startup: bool = os.getenv("MODEL_LOAD_ON_STARTUP", "false").lower() == "true"
     url_reputation_url: str = os.getenv("URL_REPUTATION_URL", "")
     history_limit: int = int(os.getenv("ANALYSIS_HISTORY_LIMIT", "100"))
