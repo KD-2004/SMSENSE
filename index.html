@@ -1126,7 +1126,11 @@
 
     <script>
         // ==================== CONFIGURATION ====================
-        const API_BASE = window.SMSENSE_API_BASE || "https://winter-rewrite-amber.ngrok-free.dev";
+        // Local-first default. Override before this script loads if your local port differs.
+        // Example: window.SMSENSE_API_BASE = "http://127.0.0.1:4444"
+        const API_BASE = String(
+            window.SMSENSE_API_BASE ?? "http://127.0.0.1:4444"
+        ).replace(/\\/+$/, "");
 
         // ==================== STATE ====================
         let currentAnalysis = null;
@@ -1215,8 +1219,7 @@
             try {
                 const headers = new Headers(options.headers || {});
 
-                // Required for ngrok free browser endpoints.
-                headers.set('ngrok-skip-browser-warning', 'true');
+                // No tunnel-specific headers are required for local development.
 
                 if (options.body && !headers.has('Content-Type')) {
                     headers.set('Content-Type', 'application/json');
@@ -1996,7 +1999,7 @@
                 document.getElementById('view-dashboard').innerHTML = `
                     <div class="alert">
                         <strong>SMSense backend is offline.</strong><br>
-                        Start the FastAPI server at: <code>https://winter-rewrite-amber.ngrok-free.dev</code>
+                        Start the FastAPI server at <code>http://127.0.0.1:4444</code>, then reload this page.
                     </div>`;
             }
         }
