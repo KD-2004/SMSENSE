@@ -7,8 +7,9 @@ from tools.review_predictions import analyze_csv, write_report
 
 
 def _write_csv(path, rows, fields):
+    all_fields = list(dict.fromkeys(list(fields) + [key for row in rows for key in row.keys()]))
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer = csv.DictWriter(handle, fieldnames=all_fields)
         writer.writeheader()
         writer.writerows(rows)
 

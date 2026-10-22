@@ -205,6 +205,13 @@ class SmsShieldClient:
         # verdict from a valid risk band instead of failing the entire SMS request.
         model_verdict = str(decoded.get("verdict", "")).strip().lower()[:80]
         verdict_supported = model_verdict in {"safe", "suspicious", "dangerous"}
+        # Observed SMS-Shield outputs include these two fallback labels; allow
+        # them only when the numeric risk contract is valid, and flag them.
+        canonicalizable_fallbacks = {"neutral", "unknown"}
+        if not verdict_supported and model_verdict not in canonicalizable_fallbacks:
+            raise ModelUnavailableError(
+                f"SMS-Shield returned an unsupported verdict: {model_verdict!r}"
+            )
         verdict = cls._expected_verdict(risk)
         consistent = verdict_supported and model_verdict == verdict
         if not verdict_supported:
