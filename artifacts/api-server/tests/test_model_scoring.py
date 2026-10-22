@@ -56,8 +56,9 @@ def test_optional_indicbert_is_exposed_as_diagnostic_challenger(monkeypatch):
 
     captured = {}
 
-    def fake_indicbert(text, truncation=True, top_k=None):
+    def fake_indicbert(text, truncation=True, max_length=None, top_k=None):
         captured["text"] = text
+        captured["max_length"] = max_length
         return [
             {"label": "ham", "score": 0.05},
             {"label": "scam", "score": 0.95},
@@ -78,6 +79,7 @@ def test_optional_indicbert_is_exposed_as_diagnostic_challenger(monkeypatch):
     challenger = next(signal for signal in signals if signal.name == "IndicBERT")
     assert challenger.available is True
     assert abs(challenger.score - 14.25) < 1e-9
+    assert captured["max_length"] == 128
     assert "[URL]" in captured["text"]
     assert "[PHONE]" in captured["text"]
 
