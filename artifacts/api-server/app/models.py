@@ -268,6 +268,7 @@ class HuggingFaceModels:
                     indic_output = indicbert(
                         prepared_text,
                         truncation=True,
+                        max_length=128,
                         top_k=None,
                     )
                     indic_probability = self._risk_probability(
