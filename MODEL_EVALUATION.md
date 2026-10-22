@@ -43,13 +43,13 @@ Use separate, labelled groups instead of relying on one easy mixed sample:
 
 Avoid leaking near-duplicate templates between training, validation and test sets. Where possible, separate by campaign/template family and time, not only by random row, so the final test contains genuinely unseen message patterns.
 
-## Model selection: benchmark before switching
+## Model selection and next challenger
 
-The current default combines HinSpam (designed for Hinglish spam/ham) with SilverGuard (an Indian SMS scam classifier). Their model cards document different training and input assumptions, so neither should be treated as universally best for every language or scenario. The SilverGuard card notes weaker reliability for very short messages and that it does not analyze embedded URLs; URL parsing and rules therefore remain separate evidence.
+SMS-Shield is the primary model for Indian SMS classification. Its model card reports results on its own 1,390-example held-out test set and notes that its training corpus is synthetic. We have not independently verified those results on real messages; model-card scores should be treated as a candidate signal, not a production accuracy guarantee.
 
-The repository now supports it as an **optional diagnostic challenger**, disabled by default. In `artifacts/api-server/.env`, set `INDICBERT_ENABLED=true`, restart the backend, and evaluate a labelled dataset; it reports a separate model score but does not alter the fused live score. This model is about 0.3B parameters according to its model card, so it needs additional RAM and can increase latency. Turn it off if your machine struggles.
+IndicBERT remains an optional diagnostic challenger for Hindi, Roman Hindi/Hinglish and other Indian-language cases. Enable it only after installing \`requirements-optional-ml.txt\` and setting \`INDICBERT_ENABLED=true\`. It reports a separate model score and does not influence the fused production score. Its model-card figures are author-reported from a manually curated test set and are not directly comparable with SMS-Shield's results.
 
-A multilingual IndicBERT-based scam classifier is another possible challenger for Hindi, Roman Hindi/Hinglish, and other Indian languages: [IndicBERT scam classifier v2](https://huggingface.co/anmolshrivastav/indicbert-scam-classifier-v2). Its model-card accuracy figures are author-reported results on a manually curated set; they are not independently verified here and must not be compared directly with HinSpam or SilverGuard scores. Do not add another always-on model just because its published headline metric is higher. First confirm its label mapping, license, dependencies, memory/latency, and performance on the same held-out SMSense test set, broken down by language and scam scenario.
+OpenTextShield is a useful future candidate if broader multilingual support becomes a priority. Its card reports a 72.4% combined block rate and 45.7% phishing recall on an 8,007-message modern multilingual benchmark, and acknowledges that two other benchmarks overlap its training data. Compare it with SMS-Shield using exactly the same independent SMSense dataset before considering a switch. See [OpenTextShield](https://huggingface.co/telecomsxchange/OpenTextShield).
 
 ## Threshold and model decisions
 
