@@ -4,23 +4,26 @@ FastAPI backend for Indian SMS spam, scam and phishing analysis. It runs locally
 
 ## Local development (Windows PowerShell)
 
-From the repository root:
+From the repository root, create and activate a virtual environment, install the backend dependencies, and copy the example configuration:
 
-```powershell
+~~~powershell
 cd artifacts/api-server
-..\..\.venv\Scripts\Activate.ps1
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
 python -m uvicorn app.main:app --host 127.0.0.1 --port 4444 --reload
-```
+~~~
 
-If your virtual environment lives inside `artifacts/api-server`, activate `.venv\Scripts\Activate.ps1` from this directory instead. Keep the backend terminal open.
+The backend loads the .env file from this directory regardless of the process working directory. Keep the backend terminal open.
 
 In a second terminal, from the repository root:
 
-```powershell
+~~~powershell
 python -m http.server 5500 --bind 127.0.0.1
-```
+~~~
 
-Open `http://127.0.0.1:5500`. The frontend defaults to `http://127.0.0.1:4444`. To override before the frontend script executes, define `window.SMSENSE_API_BASE`; don't hard-code a tunnel URL in the HTML. CORS is permissive for local prototyping; tighten allowed origins and add authentication before exposing the API to others.
+Open http://127.0.0.1:5500. The frontend defaults to http://127.0.0.1:4444. To override before the frontend script executes, define window.SMSENSE_API_BASE; do not hard-code a tunnel URL in the HTML. CORS is permissive for local prototyping; tighten allowed origins and add authentication before exposing the API to others.
 
 ## API endpoints
 
