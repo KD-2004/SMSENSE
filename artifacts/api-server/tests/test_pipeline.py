@@ -70,6 +70,16 @@ def test_credential_safety_warning_is_not_a_request():
     assert not _credential_request("OTP mat bhejo")
 
 
+def test_short_safety_warning_does_not_suppress_a_second_request():
+    assert _credential_request("Never share OTP. Send PIN.")
+    assert _credential_request("OTP mat bhejo, PIN send karo")
+
+
+def test_hinglish_negation_still_blocks_the_negated_action():
+    assert not _credential_request("OTP mat bhejo")
+    assert not _credential_request("PIN matt batao")
+
+
 def test_negated_pair_does_not_suppress_a_separate_positive_request():
     assert _credential_request("Never share your OTP. Please send your PIN to verify.")
 
