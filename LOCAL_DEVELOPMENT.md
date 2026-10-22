@@ -42,7 +42,7 @@ Open [http://127.0.0.1:5500](http://127.0.0.1:5500). The frontend uses `http://1
 ## Notes
 
 - The local backend allows cross-origin requests for development. Restrict CORS and add authentication before exposing it beyond localhost.
-- Ollama and the required Hugging Face classifiers still need to be running/available.
+- SMS-Shield must be installed in Ollama. The optional IndicBERT challenger requires `python -m pip install -r artifacts/api-server/requirements-optional-ml.txt` plus `INDICBERT_ENABLED=true`.
 - FAISS similarity uses a three-example demo index by default. It should not be treated as a reliable classifier until a larger labelled corpus is tested.
 - Run backend unit tests in the server environment with `python -m pytest -q`.
 - No accuracy claims should be made until predictions are compared with independently verified labels.
