@@ -23,6 +23,65 @@ def test_analyze_request_rejects_blank_but_preserves_original_message():
     raise AssertionError("Whitespace-only messages should be rejected")
 
 
+def test_indicbert_masking_replaces_links_and_indian_phone_numbers():
+    raw = "Pay at https://example.com/path to 9876543210"
+    prepared = HuggingFaceModels._prepare_indicbert_text(raw)
+    assert "https://example.com" not in prepared
+    assert "9876543210" not in prepared
+    assert "[URL]" in prepared
+    assert "[PHONE]" in prepared
+
+
+def test_optional_indicbert_is_exposed_as_diagnostic_challenger(monkeypatch):
+    from dataclasses import replace
+    import app.models as models
+
+    monkeypatch.setattr(
+        models,
+        "settings",
+        replace(models.settings, indicbert_enabled=True),
+    )
+    detector = HuggingFaceModels()
+    monkeypatch.setattr(detector, "package_status", lambda: (True, "test runtime"))
+
+    def fake_hinspam(text, truncation=True, top_k=None):
+        return [
+            {"label": "LABEL_0", "score": 0.1},
+            {"label": "LABEL_1", "score": 0.9},
+        ]
+
+    class FakeSilverGuard:
+        def predict(self, sender, raw):
+            return {"threat_score": 0.2}
+
+    captured = {}
+
+    def fake_indicbert(text, truncation=True, top_k=None):
+        captured["text"] = text
+        return [
+            {"label": "ham", "score": 0.05},
+            {"label": "scam", "score": 0.95},
+        ]
+
+    def fake_load(name, model_id):
+        return {
+            "hinspam": fake_hinspam,
+            "silverguard": FakeSilverGuard(),
+            "indicbert": fake_indicbert,
+        }[name]
+
+    monkeypatch.setattr(detector, "_load", fake_load)
+    signals = asyncio.run(
+        detector.signals("Pay at https://example.com to 9876543210", None)
+    )
+
+    challenger = next(signal for signal in signals if signal.name == "IndicBERT")
+    assert challenger.available is True
+    assert abs(challenger.score - 14.25) < 1e-9
+    assert "[URL]" in captured["text"]
+    assert "[PHONE]" in captured["text"]
+
+
 def test_hinspam_uses_documented_label_id_mapping():
     probability = HuggingFaceModels._risk_probability(
         [
