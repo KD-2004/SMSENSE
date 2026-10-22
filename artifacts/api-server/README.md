@@ -1,48 +1,63 @@
-# BharatPhish Guard Backend
+# SMSense API Backend
 
-FastAPI REST backend for phishing and scam analysis of Indian SMS messages. It is designed to sit behind an existing React/Lovable frontend; it does not serve a frontend and never exposes Ollama or model credentials to the browser.
+FastAPI backend for Indian SMS spam, scam and phishing analysis. It runs locally beside the static frontend.
 
-## Run locally
+## Local development (Windows PowerShell)
 
-```bash
+From the repository root:
+
+```powershell
 cd artifacts/api-server
-python -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn app.main:app --reload
+..\..\.venv\Scripts\Activate.ps1
+python -m uvicorn app.main:app --host 127.0.0.1 --port 4444 --reload
 ```
 
-The workspace workflow runs the same service on the configured `PORT` (8080 in the artifact preview). OpenAPI docs are available at `/api/docs`.
+If your virtual environment lives inside `artifacts/api-server`, activate `.venv\Scripts\Activate.ps1` from this directory instead. Keep the backend terminal open.
 
-## Model behavior
+In a second terminal, from the repository root:
 
-The service uses pretrained HinSpam and SilverGuard adapters, Qwen3 via a private Ollama connection for post-hoc explanations, and Qwen3 embeddings plus FAISS for similarity evidence. Model adapters fail closed: if a required model is not available, `/api/analyze` returns HTTP 503 with a clear `MODEL_UNAVAILABLE` state instead of fabricating a security result. The Hugging Face adapters lazily download and cache the configured pretrained weights on first health/analyze use.
+```powershell
+python -m http.server 5500 --bind 127.0.0.1
+```
 
-## API
+Open `http://127.0.0.1:5500`. The frontend defaults to `http://127.0.0.1:4444`. To override before the frontend script executes, define `window.SMSENSE_API_BASE`; don't hard-code a tunnel URL in the HTML. CORS is permissive for local prototyping; tighten allowed origins and add authentication before exposing the API to others.
 
-- `GET /api/health` reports API component state for Ollama, Hugging Face, FAISS, and SQLite.
-- `POST /api/analyze` accepts `{ "message": "...", "sender": "...", "timestamp": "..." }`.
-- `POST /api/adversarial-test` evaluates a bounded batch and returns invariants.
-- `GET /api/history`, `GET /api/history/{id}`, and `GET /api/stats` expose SQLite-backed history.
-- `POST /api/feedback` stores `{ "analysis_id": 1, "helpful": true, "note": "..." }`.
+## API endpoints
 
-## FAISS seed index
+- `GET /api/healthz`: quick reachability check.
+- `GET /api/health`: component readiness.
+- `POST /api/analyze`: analyse one message and save it to local SQLite history.
+- `POST /api/adversarial-test`: bounded multi-message analysis without normal history writes.
 
-`data/seed_scam_examples.json` is explicitly labeled demo seed data. Build its local FAISS index only after Ollama and `qwen3-embedding:0.6b` are available:
+OpenAPI is available at `/docs`.
 
-```bash
+## Models and evidence
+
+The required text classifiers are HinSpam and SilverGuard. Qwen3 provides optional post-hoc explanations and embeddings for FAISS similarity. Similarity results are supporting evidence, never a phishing probability. A missing or unavailable optional similarity service is reported in the response without inventing a score. Category and risk label are separate concepts; when no specific category rule matches, the API returns `GENERAL_MESSAGE`.
+
+## FAISS index
+
+The bundled seed set is demonstration data, not a validated reference corpus. Rebuild after Ollama and the configured embedding model are available:
+
+```powershell
 python tools/build_faiss_index.py
 ```
 
-If the index is missing or empty, health and analysis expose similarity as unavailable and do not assign similarity points.
+Do not treat the small demo index as a validated detector. Before using similarity in production scoring, benchmark it on a larger labelled corpus.
 
-## Live integration tests
+## Tests
 
-The default test suite does not require model downloads. Run live validation after configuring both Ollama models and the Hugging Face cache:
+Run unit tests without downloading the large pretrained models:
 
-```bash
-RUN_REAL_MODEL_TESTS=true pytest -m integration -q
+```powershell
+python -m pytest -q
 ```
 
-Rule-based fusion uses transparent caps: Content 30, URL 20, Behavior 20, Sender 15, Obfuscation 10, Similarity 5. KYC, OTP, a URL, or a bank name alone are not treated as proof of phishing. Thresholds (`RISK_LOW_THRESHOLD`, `RISK_SUSPICIOUS_THRESHOLD`, `RISK_HIGH_RISK_THRESHOLD`) and model endpoints are configuration values.
+Live-model checks are opt-in:
+
+```powershell
+$env:RUN_REAL_MODEL_TESTS = "true"
+python -m pytest -m integration -q
+```
+
+No accuracy claims should be made until predictions are evaluated against independently verified labels.
