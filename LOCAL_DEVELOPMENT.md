@@ -2,17 +2,30 @@
 
 SMSense consists of a static frontend in the repository root and a FastAPI backend in `artifacts/api-server`.
 
+## Install the primary model once
+
+SMSense uses SMS-Shield 4B Q4_K_M through local Ollama. Install Ollama and then run:
+
+~~~powershell
+ollama run hf.co/ganmoor-ai-labs/sms-shield:Q4_K_M
+~~~
+
+Wait for the model to download and load; enter \`/bye\` to return to PowerShell. The quantized model is about 2.4 GB according to its model card. The backend will return a clear model-unavailable error if this model tag is not installed or Ollama is not reachable.
+
 ## Start the backend (Windows PowerShell)
 
-Run the following from the repository root (adjust the venv activation path if your environment is elsewhere):
+From the repository root:
 
-```powershell
+~~~powershell
 cd artifacts/api-server
-..\..\.venv\Scripts\Activate.ps1
+python -m venv .venv
+.\\.venv\\Scripts\\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
 python -m uvicorn app.main:app --host 127.0.0.1 --port 4444 --reload
-```
+~~~
 
-If your existing virtual environment is located at `artifacts/api-server/.venv`, activate `.venv\Scripts\Activate.ps1` instead.
+If your existing virtual environment is located elsewhere, activate that environment instead. Qwen3 chat/embedding models remain optional providers for the explanation and FAISS similarity features; the main detector is SMS-Shield.
 
 Confirm the server is live at [http://127.0.0.1:4444/api/healthz](http://127.0.0.1:4444/api/healthz). Interactive documentation is at [http://127.0.0.1:4444/docs](http://127.0.0.1:4444/docs).
 
