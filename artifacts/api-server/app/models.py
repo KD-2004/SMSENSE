@@ -1,4 +1,5 @@
 import logging
+import math
 import asyncio
 import re
 import unicodedata
@@ -121,15 +122,88 @@ class HuggingFaceModels:
         return self._pipelines[name]
 
     @staticmethod
-    def _risk_score(output: Any) -> float:
-        if isinstance(output, list) and output:
+    def _risk_probability(output: Any, model_id: str | None = None) -> float:
+        """
+        Return the probability assigned to a risky class.
+
+        Hugging Face's default pipeline output contains only the top class.
+        Requesting top_k=None gives us all class scores, so we can select the
+        risk class by its meaning instead of assuming that a high score always
+        means spam. LABEL_0/LABEL_1 is interpreted only for the documented
+        HinSpam model, whose model card defines 0=ham and 1=spam.
+        """
+        if isinstance(output, list) and len(output) == 1 and isinstance(output[0], list):
             output = output[0]
-        if not isinstance(output, dict):
-            raise ModelUnavailableError("Hugging Face model returned an invalid classification response")
-        label = str(output.get("label", "")).lower()
-        score = float(output.get("score", 0))
-        risky = any(term in label for term in ("spam", "scam", "phish", "fraud", "malicious", "positive", "label_1", "1"))
-        return max(0.0, min(15.0, score * 15 if risky else (1 - score) * 15))
+        if isinstance(output, dict):
+            rows = [output]
+        elif isinstance(output, list) and output and all(isinstance(item, dict) for item in output):
+            rows = output
+        else:
+            raise ModelUnavailableError(
+                "Hugging Face model returned an invalid classification response"
+            )
+
+        normalized_model_id = (model_id or settings.hinspam_model).strip().lower().rstrip("/")
+        is_documented_hinspam = normalized_model_id == "keshav0av/hinspam-spam-detection"
+        risk_words = {"spam", "scam", "phish", "phishing", "fraud", "malicious", "smishing"}
+        safe_words = {"ham", "benign", "legitimate", "legit", "safe", "normal", "clean"}
+        risk_scores: list[float] = []
+        safe_scores: list[float] = []
+
+        for row in rows:
+            label = str(row.get("label", "")).strip().lower()
+            try:
+                score = float(row.get("score"))
+            except (TypeError, ValueError) as exc:
+                raise ModelUnavailableError(
+                    "Hugging Face model returned a non-numeric class score"
+                ) from exc
+            if not math.isfinite(score) or score < 0.0 or score > 1.0:
+                raise ModelUnavailableError(
+                    "Hugging Face model returned a score outside the expected 0–1 range"
+                )
+
+            normalized_label = re.sub(r"[^a-z0-9]+", "_", label).strip("_")
+            words = set(normalized_label.split("_"))
+            is_negated_risk_label = bool(words.intersection({"not", "non", "no"})) and bool(
+                words.intersection(risk_words)
+            )
+
+            if is_negated_risk_label or words.intersection(safe_words):
+                safe_scores.append(score)
+            elif words.intersection(risk_words):
+                risk_scores.append(score)
+            elif is_documented_hinspam and normalized_label in {"label_1", "1"}:
+                risk_scores.append(score)
+            elif is_documented_hinspam and normalized_label in {"label_0", "0"}:
+                safe_scores.append(score)
+            else:
+                raise ModelUnavailableError(
+                    "Cannot map classifier label to safe/scam without a known label mapping: "
+                    f"{label!r} from {normalized_model_id!r}"
+                )
+
+        # With all class probabilities, sum every explicitly risky class.
+        if risk_scores and safe_scores:
+            return max(0.0, min(1.0, sum(risk_scores)))
+        # Single top-class response: invert confidence only when the top class
+        # is explicitly benign. Never infer risk from a vague 'positive' label.
+        if len(rows) == 1 and risk_scores:
+            return risk_scores[0]
+        if len(rows) == 1 and safe_scores:
+            return max(0.0, min(1.0, 1.0 - safe_scores[0]))
+        if risk_scores and not safe_scores:
+            return max(0.0, min(1.0, sum(risk_scores)))
+        raise ModelUnavailableError(
+            "Classifier response did not include a mappable safe/scam class"
+        )
+
+    @staticmethod
+    def _risk_score(output: Any) -> float:
+        """Compatibility wrapper: scale a known spam probability to 0–15."""
+        return HuggingFaceModels._risk_probability(
+            output, settings.hinspam_model
+        ) * 15.0
 
     async def signals(self, raw: str, sender: str | None) -> list[ModelSignal]:
         available, detail = self.package_status()
@@ -138,11 +212,26 @@ class HuggingFaceModels:
         def run() -> list[ModelSignal]:
             hinspam = self._load("hinspam", settings.hinspam_model)
             silverguard = self._load("silverguard", settings.silverguard_model)
-            hin_output = hinspam(raw, truncation=True)
+            # Request every class score: selecting only the top class makes it
+            # harder to distinguish risk probability from benign confidence.
+            hin_output = hinspam(raw, truncation=True, top_k=None)
+            hin_probability = self._risk_probability(
+                hin_output, settings.hinspam_model
+            )
             silver_output = silverguard.predict(sender, raw)
             return [
-                ModelSignal("HinSpam", True, self._risk_score(hin_output), "Pretrained HinSpam classification"),
-                ModelSignal("SilverGuard", True, float(silver_output["threat_score"]) * 15, f"Pretrained SilverGuard ONNX threat_score={silver_output['threat_score']:.6f}"),
+                ModelSignal(
+                    "HinSpam",
+                    True,
+                    hin_probability * 15.0,
+                    f"Pretrained HinSpam risk_probability={hin_probability:.6f}",
+                ),
+                ModelSignal(
+                    "SilverGuard",
+                    True,
+                    float(silver_output["threat_score"]) * 15.0,
+                    f"Pretrained SilverGuard ONNX threat_score={silver_output['threat_score']:.6f}",
+                ),
             ]
         return await asyncio.to_thread(run)
 
@@ -207,4 +296,9 @@ class SilverGuardOnnx:
         ids, mask = self.tokenizer.encode(sender, raw) if sender else self.tokenizer.encode(raw)
         outputs = self.session.run(None, {"input_ids": np.array([ids], dtype=np.int64), "attention_mask": np.array([mask], dtype=np.int64)})
         threat_score = float(outputs[0][0][0])
-        return {"threat_score": max(0.0, min(1.0, threat_score))}
+        if not math.isfinite(threat_score) or not 0.0 <= threat_score <= 1.0:
+            raise ModelUnavailableError(
+                "SilverGuard returned a score outside the expected 0–1 probability range"
+            )
+        # SilverGuard's ONNX output is already a softmax probability.
+        return {"threat_score": threat_score}
