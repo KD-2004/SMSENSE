@@ -93,3 +93,37 @@ def test_analyze_endpoint_rejects_whitespace_only_message():
     response = asyncio.run(request())
 
     assert response.status_code == 422
+
+
+
+def test_cors_allows_documented_local_frontend_and_rejects_unlisted_origin():
+    async def request(origin):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app),
+            base_url="http://testserver",
+        ) as client:
+            return await client.get("/api/healthz", headers={"Origin": origin})
+
+    local_response = asyncio.run(request("http://127.0.0.1:5500"))
+    unlisted_response = asyncio.run(request("https://untrusted.example"))
+
+    assert local_response.status_code == 200
+    assert local_response.headers.get("access-control-allow-origin") == "http://127.0.0.1:5500"
+    assert unlisted_response.status_code == 200
+    assert "access-control-allow-origin" not in unlisted_response.headers
+
+
+def test_api_responses_use_no_store_and_basic_security_headers():
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app),
+            base_url="http://testserver",
+        ) as client:
+            return await client.get("/api/healthz")
+
+    response = asyncio.run(request())
+
+    assert response.headers.get("cache-control") == "no-store"
+    assert response.headers.get("x-content-type-options") == "nosniff"
+    assert response.headers.get("x-frame-options") == "DENY"
+    assert response.headers.get("referrer-policy") == "no-referrer"
