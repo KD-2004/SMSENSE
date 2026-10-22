@@ -4,6 +4,7 @@ import json
 from app.models import (
     HuggingFaceModels,
     ModelUnavailableError,
+    OllamaClient,
     SmsShieldClient,
 )
 from app.schemas import AnalysisResponse
@@ -174,6 +175,92 @@ def test_optional_indicbert_is_diagnostic_only(monkeypatch):
     assert "[URL]" in captured["text"]
     assert "[PHONE]" in captured["text"]
     assert "excluded from fused scoring" in signal.detail
+
+
+def test_ollama_explainer_disables_thinking_and_retries_without_json_mode(monkeypatch):
+    requests = []
+
+    class FakeResponse:
+        is_success = True
+        status_code = 200
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json):
+            requests.append((url, json))
+            if len(requests) == 1:
+                return FakeResponse({
+                    "message": {
+                        "content": "",
+                        "thinking": "I should prepare a structured answer.",
+                    }
+                })
+            return FakeResponse({
+                "message": {
+                    "content": json_module.dumps({
+                        "summary": "The message promotes a time-limited loan offer with an unfamiliar link.",
+                        "suspicious_phrases": ["Offer expires soon"],
+                        "recommended_action": "Verify the offer through the lender's official website before opening the link.",
+                    })
+                }
+            })
+
+    import json as json_module
+    monkeypatch.setattr("app.models.httpx.AsyncClient", lambda timeout: FakeClient())
+    explainer = OllamaClient()
+
+    result = asyncio.run(explainer.explain({
+        "final_score": 28,
+        "final_label": "SUSPICIOUS",
+        "category": "URL_REVIEW",
+    }))
+
+    assert len(requests) == 2
+    assert requests[0][1]["think"] is False
+    assert requests[0][1]["format"] == "json"
+    assert requests[1][1]["think"] is False
+    assert "format" not in requests[1][1]
+    assert result["summary"].startswith("The message promotes")
+    assert result["suspicious_phrases"] == ["Offer expires soon"]
+    assert result["recommended_action"].startswith("Verify the offer")
+
+
+def test_ollama_explainer_rejects_empty_content_after_retry(monkeypatch):
+    class FakeResponse:
+        is_success = True
+        status_code = 200
+
+        def json(self):
+            return {"message": {"content": "", "thinking": "reasoning only"}}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json):
+            return FakeResponse()
+
+    monkeypatch.setattr("app.models.httpx.AsyncClient", lambda timeout: FakeClient())
+    try:
+        asyncio.run(OllamaClient().explain({"final_score": 28}))
+    except ModelUnavailableError as exc:
+        assert "empty content" in str(exc).lower()
+    else:
+        raise AssertionError("Empty model content must not be reported as a successful explanation")
 
 
 def test_optional_explainer_failure_does_not_discard_analysis_result(monkeypatch):
