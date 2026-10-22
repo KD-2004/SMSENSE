@@ -101,7 +101,7 @@ class UrlReputationClient:
             async with httpx.AsyncClient(timeout=self.REQUEST_TIMEOUT_SECONDS) as client:
                 response = await client.post(
                     self.ENDPOINT,
-                    params={"key": self.api_key},
+                    headers={"x-goog-api-key": self.api_key},
                     json=request_body,
                 )
             if not response.is_success:
