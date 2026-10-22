@@ -8,6 +8,21 @@ from app.service import AnalysisService
 HINSPAM = "Keshav0av/HinSpam-spam-detection"
 
 
+def test_analyze_request_rejects_blank_but_preserves_original_message():
+    from pydantic import ValidationError
+    from app.schemas import AnalyzeRequest
+
+    original = "  Please review this message.  "
+    request = AnalyzeRequest(message=original)
+    assert request.message == original
+
+    try:
+        AnalyzeRequest(message="   \\n \\t")
+    except ValidationError:
+        return
+    raise AssertionError("Whitespace-only messages should be rejected")
+
+
 def test_hinspam_uses_documented_label_id_mapping():
     probability = HuggingFaceModels._risk_probability(
         [
