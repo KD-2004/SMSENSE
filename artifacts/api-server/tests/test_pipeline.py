@@ -24,6 +24,25 @@ def test_parser_extracts_bare_and_shortened_domains_and_keeps_distinct_paths():
     assert parsed.domains == ["bit.ly", "i.airtel.in", "example.com"]
 
 
+def test_url_analysis_checks_each_path_when_domain_is_deduplicated():
+    from app.rules import url_signals
+
+    long_url = "https://example.com/" + ("a" * 210)
+    parsed = parse_message(
+        "https://example.com/ordinary " + long_url,
+        None,
+        None,
+    )
+    assert parsed.domains == ["example.com"]
+    assert parsed.url_domains == ["example.com", "example.com"]
+
+    analysis = url_signals(parsed)
+    items = analysis["urls"]
+    assert len(items) == 2
+    assert items[0]["suspicious_structure"] is False
+    assert items[1]["suspicious_structure"] is True
+
+
 def test_parser_does_not_treat_email_domain_as_link():
     parsed = parse_message("Email help@example.com for support", None, None)
     assert parsed.urls == []
