@@ -30,7 +30,14 @@ class AnalysisService:
 
         # Required content classifiers must be available; never invent fallback scores.
         model_signals = await self.hf.signals(message, sender)
-        content_signal = min(30.0, sum(float(signal.score) for signal in model_signals))
+        content_signal = min(
+            30.0,
+            sum(
+                float(signal.score)
+                for signal in model_signals
+                if signal.available and signal.name in {"HinSpam", "SilverGuard"}
+            ),
+        )
 
         # Similarity is supporting evidence, not a probability. The store owns
         # metric-aware distance conversion. Keep core text analysis usable if the
