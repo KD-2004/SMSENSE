@@ -60,6 +60,24 @@ def test_normalizer_does_not_change_raw():
     assert normalized.leetspeak
 
 
+def test_normalizer_preserves_url_case_and_does_not_decode_url_path_as_leetspeak():
+    raw = "Please upd8 your account at https://Bank.example/ODFroNwq3J"
+    result = normalize_message(raw)
+
+    assert result.normalized == "please update your account at https://Bank.example/ODFroNwq3J"
+    assert result.leetspeak is True
+    assert "odfronwq3j -> odfronwqej" not in result.misspellings
+
+
+def test_normalizer_does_not_flag_only_a_numeric_url_path_as_leetspeak():
+    raw = "Home loan offer expires soon. bnkbzr.co/ODFroNwq3J"
+    result = normalize_message(raw)
+
+    assert result.normalized == "home loan offer expires soon. bnkbzr.co/ODFroNwq3J"
+    assert result.leetspeak is False
+    assert result.misspellings == []
+
+
 def test_combination_rule_is_stronger_than_single_keyword():
     signals = behavior_signals("Your KYC is urgent and your account will be blocked. Click https://example.com")
     assert "KYC plus account threat" in signals.combination_hits
