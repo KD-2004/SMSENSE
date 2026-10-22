@@ -37,3 +37,23 @@ def test_read_samples_rejects_blank_messages(tmp_path):
     source.write_text("message,label\n ,HAM\n", encoding="utf-8")
     with pytest.raises(ValueError, match="blank"):
         read_samples(source)
+
+
+def test_runner_help_imports_when_called_as_script_from_any_directory(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    backend_root = Path(__file__).resolve().parents[1]
+    runner = backend_root / "tools" / "run_sample_and_report.py"
+    completed = subprocess.run(
+        [sys.executable, str(runner), "--help"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "--csv" in completed.stdout

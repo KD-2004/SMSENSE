@@ -13,7 +13,15 @@ import argparse
 import csv
 import json
 from pathlib import Path
+import sys
 from typing import Any
+
+# When run as `python tools\\run_sample_and_report.py`, Python puts the
+# tools directory—not its parent—on sys.path. Add the backend root so the
+# shared report module imports correctly regardless of the current directory.
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 import httpx
 from tools.review_predictions import analyze_csv, write_report
