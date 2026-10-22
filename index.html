@@ -1600,6 +1600,7 @@
             const postHoc = result.post_hoc || {};
             const modelSignals = result.explanation?.model_signals || [];
             const modelAssessment = result.model_assessment || {};
+            const decisionDiagnostics = result.decision_diagnostics || {};
             const normalized = result.normalized_message || '';
             const raw = result.raw_message || '';
             const obfuscation = result.obfuscation || {};
@@ -1637,6 +1638,17 @@
                 ${Number(modelAssessment.segments_analyzed ?? 1) > 1 ? `<p style="font-size:12px; color:var(--text-muted); margin-top:8px;">Long message: analyzed ${Number(modelAssessment.segments_analyzed)} overlapping segments; final model risk uses the highest segment score.</p>` : ''}
             </div>` : ''}
 
+            ${(decisionDiagnostics.requires_manual_review || (decisionDiagnostics.data_gaps || []).length) ? `<div class="card">
+                <div class="card-title">Decision Diagnostics</div>
+                <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:10px;">
+                    <strong>SMS-Shield risk: ${Number(decisionDiagnostics.model_risk ?? modelAssessment.risk ?? 0)} / 100</strong>
+                    <strong>Final risk: ${Number(decisionDiagnostics.final_risk_score ?? risk)} / 100</strong>
+                    ${decisionDiagnostics.requires_manual_review ? '<span style="border:1px solid #d97706; color:#d97706; padding:4px 8px; border-radius:6px;">Manual review suggested</span>' : ''}
+                </div>
+                ${(decisionDiagnostics.review_reasons || []).length ? `<div style="margin-bottom:10px;"><strong>Why this result needs review</strong><ul style="padding-left:20px; margin-top:6px;">${decisionDiagnostics.review_reasons.map(reason => `<li>${escapeHtml(String(reason).replace(/_/g, ' '))}</li>`).join('')}</ul></div>` : ''}
+                ${(decisionDiagnostics.data_gaps || []).length ? `<div><strong>Evidence / integration gaps</strong><ul style="padding-left:20px; margin-top:6px;">${decisionDiagnostics.data_gaps.map(reason => `<li>${escapeHtml(String(reason).replace(/_/g, ' '))}</li>`).join('')}</ul></div>` : ''}
+                <p style="font-size:12px; color:var(--text-muted); margin-top:10px;">Review flags identify disagreements or missing evidence; they do not prove the message is malicious.</p>
+            </div>` : ''}
             <div class="card">
                 <div class="card-title">Evidence Breakdown</div>
                 ${renderEvidenceBars(evidence)}
