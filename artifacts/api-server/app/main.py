@@ -138,13 +138,13 @@ async def startup_diagnostics() -> None:
     )
 
     logger.info(
-        "Configured HinSpam model: %s",
-        settings.hinspam_model,
+        "Configured primary SMS-Shield classifier: %s",
+        settings.sms_shield_model,
     )
 
     logger.info(
-        "Configured SilverGuard model: %s",
-        settings.silverguard_model,
+        "Optional IndicBERT challenger enabled: %s",
+        settings.indicbert_enabled,
     )
 
     logger.info(
@@ -230,23 +230,20 @@ async def health() -> HealthResponse:
         )
 
     # --------------------------------------------------------
-    # Hugging Face models
+    # Primary SMS-Shield classifier and optional HF challenger
     # --------------------------------------------------------
 
     try:
-        hf_status = (
-            await service.hf.detailed_status()
-        )
+        sms_shield_ok, sms_shield_detail = await service.sms_shield.status()
+    except Exception as exc:
+        sms_shield_ok = False
+        sms_shield_detail = f"SMS-Shield status check failed: {type(exc).__name__}"
+
+    try:
+        hf_status = await service.hf.detailed_status()
     except Exception as exc:
         hf_status = {
-            "hinspam": (
-                False,
-                f"Status check failed: {type(exc).__name__}",
-            ),
-            "silverguard": (
-                False,
-                f"Status check failed: {type(exc).__name__}",
-            ),
+            "indicbert": (False, f"Status check failed: {type(exc).__name__}"),
         }
 
     # --------------------------------------------------------
@@ -301,14 +298,9 @@ async def health() -> HealthResponse:
             "detail": ollama_embedding_detail,
         },
 
-        "hugging_face_hinspam": {
-            "available": hf_status["hinspam"][0],
-            "detail": hf_status["hinspam"][1],
-        },
-
-        "hugging_face_silverguard": {
-            "available": hf_status["silverguard"][0],
-            "detail": hf_status["silverguard"][1],
+        "sms_shield_classifier": {
+            "available": sms_shield_ok,
+            "detail": sms_shield_detail,
         },
 
         "faiss": {
