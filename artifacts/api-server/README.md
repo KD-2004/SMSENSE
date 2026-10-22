@@ -48,6 +48,16 @@ python tools/build_faiss_index.py
 
 Do not treat the small demo index as a validated detector. Before using similarity in production scoring, benchmark it on a larger labelled corpus.
 
+## Labelled evaluation
+
+To measure accuracy against independently reviewed ground-truth labels, fill in data/evaluation_template.csv and follow the [accuracy and robustness guide](../../MODEL_EVALUATION.md). With the backend running, from this directory run:
+
+~~~powershell
+python tools/evaluate_dataset.py --csv data/evaluation.csv --base-url http://127.0.0.1:4444 --threshold 50
+~~~
+
+The runner uses /api/adversarial-test in batches and omits message text from the exported prediction file. Tune any threshold on validation data only; use an untouched test set for the final report. Do not present the 0–100 fused risk score as a probability.
+
 ## Tests
 
 Run unit tests without downloading the large pretrained models:
