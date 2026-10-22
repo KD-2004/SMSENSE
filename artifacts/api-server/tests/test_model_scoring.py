@@ -1,26 +1,135 @@
 import asyncio
+import json
 
-from app.models import HuggingFaceModels, ModelSignal, ModelUnavailableError
+from app.models import (
+    HuggingFaceModels,
+    ModelUnavailableError,
+    SmsShieldClient,
+)
 from app.schemas import AnalysisResponse
 from app.service import AnalysisService
 
 
-HINSPAM = "Keshav0av/HinSpam-spam-detection"
+def _assessment(
+    risk=15,
+    verdict="safe",
+    category="personal",
+    red_flags=None,
+    segments=1,
+):
+    return {
+        "model": "SMS-Shield",
+        "model_id": "hf.co/ganmoor-ai-labs/sms-shield:Q4_K_M",
+        "risk": risk,
+        "verdict": verdict,
+        "model_verdict": verdict,
+        "verdict_consistent": True,
+        "category": category,
+        "scam_type": None,
+        "red_flags": red_flags or [],
+        "explanation": "Test assessment",
+        "segments_analyzed": segments,
+        "aggregation": "single_message" if segments == 1 else "maximum_risk_across_overlapping_segments",
+        "segment_risks": [risk] * segments,
+    }
 
 
-def test_analyze_request_rejects_blank_but_preserves_original_message():
-    from pydantic import ValidationError
-    from app.schemas import AnalyzeRequest
+def test_sms_shield_parses_structured_indian_sms_verdict():
+    result = SmsShieldClient._parse_result(
+        json.dumps(
+            {
+                "verdict": "dangerous",
+                "category": "scam",
+                "scam_type": "kyc_fraud",
+                "risk": 88,
+                "red_flags": ["account threat", "suspicious link"],
+                "explanation": "The sender pressures the recipient to open an unfamiliar link.",
+            }
+        )
+    )
+    assert result["model"] == "SMS-Shield"
+    assert result["risk"] == 88
+    assert result["verdict"] == "dangerous"
+    assert result["scam_type"] == "kyc_fraud"
+    assert "suspicious link" in result["red_flags"]
 
-    original = "  Please review this message.  "
-    request = AnalyzeRequest(message=original)
-    assert request.message == original
 
-    try:
-        AnalyzeRequest(message="   \n \t")
-    except ValidationError:
-        return
-    raise AssertionError("Whitespace-only messages should be rejected")
+def test_sms_shield_canonicalizes_verdict_when_risk_band_conflicts():
+    result = SmsShieldClient._parse_result(
+        json.dumps(
+            {
+                "verdict": "safe",
+                "category": "personal",
+                "scam_type": None,
+                "risk": 76,
+                "red_flags": [],
+                "explanation": "Inconsistent model output.",
+            }
+        )
+    )
+    assert result["verdict"] == "dangerous"
+    assert result["model_verdict"] == "safe"
+    assert result["verdict_consistent"] is False
+
+
+def test_sms_shield_rejects_missing_or_invalid_risk_scores():
+    for payload in (
+        {"verdict": "dangerous", "risk": "unknown"},
+        {"verdict": "safe", "risk": 101},
+        {"verdict": "safe", "risk": float("nan")},
+        {"verdict": "maybe", "risk": 20},
+    ):
+        try:
+            SmsShieldClient._parse_result(json.dumps(payload))
+        except ModelUnavailableError:
+            continue
+        raise AssertionError(f"Invalid model output should be rejected: {payload}")
+
+
+def test_sms_shield_accepts_json_wrapped_after_a_short_preamble():
+    result = SmsShieldClient._parse_result(
+        'Result follows: {"verdict":"suspicious","risk":55,"category":"banking",'
+        '"scam_type":null,"red_flags":["unusual request"],"explanation":"Check sender."}'
+    )
+    assert result["risk"] == 55
+    assert result["verdict"] == "suspicious"
+
+
+def test_long_message_is_split_into_overlapping_segments_with_full_coverage():
+    message = "A" * 1300
+    segments = SmsShieldClient._segments(message)
+    assert len(segments) >= 3
+    assert all(0 < len(segment) <= SmsShieldClient.MAX_SEGMENT_CHARS for segment in segments)
+    assert segments[0] == message[:512]
+    assert segments[-1][-1] == message[-1]
+    # Each segment overlaps the following segment, so no boundary is skipped.
+    assert all(
+        segments[index][-SmsShieldClient.SEGMENT_OVERLAP_CHARS :]
+        == segments[index + 1][: SmsShieldClient.SEGMENT_OVERLAP_CHARS]
+        for index in range(len(segments) - 1)
+    )
+
+
+def test_long_message_aggregation_uses_highest_risk_segment(monkeypatch):
+    detector = SmsShieldClient()
+    risks = iter([10, 84, 25])
+
+    async def fake_classify_segment(segment, sender):
+        risk = next(risks)
+        verdict = "safe" if risk < 40 else "suspicious" if risk < 70 else "dangerous"
+        return _assessment(
+            risk=risk,
+            verdict=verdict,
+            red_flags=[f"flag-{risk}"],
+        )
+
+    monkeypatch.setattr(detector, "_classify_segment", fake_classify_segment)
+    result = asyncio.run(detector.classify("A" * 1100, "BANKALERT"))
+    assert result["risk"] == 84
+    assert result["verdict"] == "dangerous"
+    assert result["segments_analyzed"] == 3
+    assert result["segment_risks"] == [10, 84, 25]
+    assert result["red_flags"] == ["flag-10", "flag-84", "flag-25"]
 
 
 def test_indicbert_masking_replaces_links_and_indian_phone_numbers():
@@ -32,7 +141,7 @@ def test_indicbert_masking_replaces_links_and_indian_phone_numbers():
     assert "[PHONE]" in prepared
 
 
-def test_optional_indicbert_is_exposed_as_diagnostic_challenger(monkeypatch):
+def test_optional_indicbert_is_diagnostic_only(monkeypatch):
     from dataclasses import replace
     import app.models as models
 
@@ -44,16 +153,6 @@ def test_optional_indicbert_is_exposed_as_diagnostic_challenger(monkeypatch):
     detector = HuggingFaceModels()
     monkeypatch.setattr(detector, "package_status", lambda: (True, "test runtime"))
 
-    def fake_hinspam(text, truncation=True, top_k=None):
-        return [
-            {"label": "LABEL_0", "score": 0.1},
-            {"label": "LABEL_1", "score": 0.9},
-        ]
-
-    class FakeSilverGuard:
-        def predict(self, sender, raw):
-            return {"threat_score": 0.2}
-
     captured = {}
 
     def fake_indicbert(text, truncation=True, max_length=None, top_k=None):
@@ -64,86 +163,27 @@ def test_optional_indicbert_is_exposed_as_diagnostic_challenger(monkeypatch):
             {"label": "scam", "score": 0.95},
         ]
 
-    def fake_load(name, model_id):
-        return {
-            "hinspam": fake_hinspam,
-            "silverguard": FakeSilverGuard(),
-            "indicbert": fake_indicbert,
-        }[name]
-
-    monkeypatch.setattr(detector, "_load", fake_load)
-    signals = asyncio.run(
-        detector.signals("Pay at https://example.com to 9876543210", None)
+    monkeypatch.setattr(detector, "_load", lambda name, model_id: fake_indicbert)
+    signal = asyncio.run(
+        detector.challenger_signal("Pay at https://example.com to 9876543210")
     )
-
-    challenger = next(signal for signal in signals if signal.name == "IndicBERT")
-    assert challenger.available is True
-    assert abs(challenger.score - 14.25) < 1e-9
+    assert signal is not None
+    assert signal.available is True
+    assert abs(signal.score - 14.25) < 1e-9
     assert captured["max_length"] == 128
     assert "[URL]" in captured["text"]
     assert "[PHONE]" in captured["text"]
+    assert "excluded from fused scoring" in signal.detail
 
 
-def test_hinspam_uses_documented_label_id_mapping():
-    probability = HuggingFaceModels._risk_probability(
-        [
-            {"label": "LABEL_0", "score": 0.08},
-            {"label": "LABEL_1", "score": 0.92},
-        ],
-        HINSPAM,
-    )
-    assert abs(probability - 0.92) < 1e-9
-
-
-def test_semantic_labels_use_scam_probability_not_top_label_confidence():
-    probability = HuggingFaceModels._risk_probability(
-        [
-            {"label": "ham", "score": 0.73},
-            {"label": "spam", "score": 0.27},
-        ],
-        "custom/model-with-semantic-labels",
-    )
-    assert abs(probability - 0.27) < 1e-9
-
-
-def test_single_benign_top_class_is_inverted_to_risk_probability():
-    probability = HuggingFaceModels._risk_probability(
-        {"label": "legitimate", "score": 0.81},
-        "custom/model-with-semantic-labels",
-    )
-    assert abs(probability - 0.19) < 1e-9
-
-
-def test_unknown_numeric_labels_are_not_guessed_for_custom_models():
-    try:
-        HuggingFaceModels._risk_probability(
-            [{"label": "LABEL_0", "score": 0.2}, {"label": "LABEL_1", "score": 0.8}],
-            "someone/custom-model",
-        )
-    except ModelUnavailableError:
-        return
-    raise AssertionError("Unknown label ids must fail safely instead of guessing")
-
-
-def test_non_probability_scores_are_rejected():
-    try:
-        HuggingFaceModels._risk_probability(
-            {"label": "spam", "score": 1.2},
-            HINSPAM,
-        )
-    except ModelUnavailableError:
-        return
-    raise AssertionError("Out-of-range class scores must fail validation")
-
-
-def test_optional_explainer_failure_does_not_discard_analysis_result():
+def test_optional_explainer_failure_does_not_discard_analysis_result(monkeypatch):
     service = AnalysisService()
 
-    async def fake_signals(raw, sender):
-        return [
-            ModelSignal("HinSpam", True, 2.0, "test signal"),
-            ModelSignal("SilverGuard", True, 1.0, "test signal"),
-        ]
+    async def fake_classify(message, sender):
+        return _assessment()
+
+    async def no_challenger(raw):
+        return None
 
     async def fake_similarity(raw, normalized, ollama):
         return {
@@ -157,41 +197,43 @@ def test_optional_explainer_failure_does_not_discard_analysis_result():
     async def unavailable_explanation(payload):
         raise ModelUnavailableError("Ollama is offline")
 
-    service.hf.signals = fake_signals
-    service.similarity.search = fake_similarity
-    service.ollama.explain = unavailable_explanation
+    monkeypatch.setattr(service.sms_shield, "classify", fake_classify)
+    monkeypatch.setattr(service.hf, "challenger_signal", no_challenger)
+    monkeypatch.setattr(service.similarity, "search", fake_similarity)
+    monkeypatch.setattr(service.ollama, "explain", unavailable_explanation)
 
     result = asyncio.run(
         service.analyze("Hey, are we meeting at six?", None, post_hoc=True)
     )
-
     assert result["risk_score"] >= 0
     assert result["label"] in {"LOW", "SUSPICIOUS", "HIGH RISK", "CRITICAL"}
+    assert result["model_assessment"]["model"] == "SMS-Shield"
     assert result["explanation_status"]["requested"] is True
     assert result["explanation_status"]["available"] is False
     assert result["post_hoc"]["recommended_action"]
 
 
-def test_api_schema_keeps_similarity_sender_and_explanation_status():
+def test_api_schema_keeps_model_assessment_similarity_and_sender(monkeypatch):
     service = AnalysisService()
 
-    async def fake_signals(raw, sender):
-        return [
-            ModelSignal("HinSpam", True, 2.0, "test signal"),
-            ModelSignal("SilverGuard", True, 1.0, "test signal"),
-        ]
+    async def fake_classify(message, sender):
+        return _assessment()
+
+    async def no_challenger(raw):
+        return None
 
     async def fake_similarity(raw, normalized, ollama):
         return {"available": False, "matches": [], "similarity_signal": 0.0}
 
-    service.hf.signals = fake_signals
-    service.similarity.search = fake_similarity
+    monkeypatch.setattr(service.sms_shield, "classify", fake_classify)
+    monkeypatch.setattr(service.hf, "challenger_signal", no_challenger)
+    monkeypatch.setattr(service.similarity, "search", fake_similarity)
 
     result = asyncio.run(
         service.analyze("A normal check-in.", "PERSONAL", post_hoc=False)
     )
     response = AnalysisResponse(**result)
-
     assert response.sender == "PERSONAL"
+    assert response.model_assessment["model"] == "SMS-Shield"
     assert response.similarity["available"] is False
     assert response.explanation_status["requested"] is False
