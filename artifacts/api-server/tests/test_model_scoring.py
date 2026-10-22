@@ -17,7 +17,7 @@ def test_analyze_request_rejects_blank_but_preserves_original_message():
     assert request.message == original
 
     try:
-        AnalyzeRequest(message="   \\n \\t")
+        AnalyzeRequest(message="   \n \t")
     except ValidationError:
         return
     raise AssertionError("Whitespace-only messages should be rejected")
