@@ -19,7 +19,7 @@ The project combines **pretrained machine-learning models**, **rule-based securi
 - [How SMSense Works](#how-smsense-works)
 - [System Architecture](#system-architecture)
 - [Detection Pipeline](#detection-pipeline)
-- [Pretrained Models](#pretrained-models)
+- [Current Pretrained Models](#current-pretrained-models)
 - [Evidence Categories](#evidence-categories)
 - [Risk Scoring](#risk-scoring)
 - [Rule-Based Behavior Analysis](#rule-based-behavior-analysis)
@@ -251,7 +251,7 @@ For URLs found in an SMS, SMSense can inspect structural indicators such as:
 - Domain information returned by the backend
 - Reputation state when supplied by the backend
 
-SMSense does **not** claim a URL is malicious merely because a structural indicator exists. URL reputation is optional and disabled until a Google Safe Browsing API key is configured. When enabled, only extracted URL strings are sent to Google; the complete SMS and sender are not sent. A no-match result is not a guarantee that a URL is safe.
+SMSense does **not** claim a URL is malicious merely because a structural indicator exists. URL reputation is optional and disabled until `GOOGLE_SAFE_BROWSING_API_KEY` is configured in `artifacts/api-server/.env`. When enabled, only extracted URL strings are sent to Google; the complete SMS and sender are not sent. A URL itself may contain sensitive query parameters, so enable external lookups only when that disclosure is acceptable. A no-match result is not a guarantee that a URL is safe. See the [backend setup guide](artifacts/api-server/README.md#optional-url-reputation).
 
 ### 6. Sender Analysis
 
