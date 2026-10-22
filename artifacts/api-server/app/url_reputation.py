@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
@@ -27,6 +28,7 @@ class UrlReputationClient:
     MAX_URLS_PER_MESSAGE = 10
     MAX_CONCURRENT_LOOKUPS = 3
     CACHE_TTL_SECONDS = 3600
+    MAX_CACHE_ENTRIES = 2048
     REQUEST_TIMEOUT_SECONDS = 5.0
 
     def __init__(self, api_key: str | None = None) -> None:
@@ -42,7 +44,10 @@ class UrlReputationClient:
         value = (raw_url or "").strip()
         if not value:
             return None
-        if not value.lower().startswith(("http://", "https://")):
+        if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", value):
+            if not value.lower().startswith(("http://", "https://")):
+                return None
+        else:
             value = "https://" + value
         try:
             parts = urlsplit(value)
@@ -173,6 +178,17 @@ class UrlReputationClient:
                 # Cache only successful malicious/no_match answers, not provider failures.
                 if result.get("reputation") in {"malicious", "no_match"}:
                     self._cache[url] = (checked_at, dict(result))
+
+            if len(self._cache) > self.MAX_CACHE_ENTRIES:
+                expired = [
+                    key
+                    for key, (created_at, _value) in self._cache.items()
+                    if checked_at - created_at >= self.CACHE_TTL_SECONDS
+                ]
+                for key in expired:
+                    self._cache.pop(key, None)
+                while len(self._cache) > self.MAX_CACHE_ENTRIES:
+                    self._cache.pop(next(iter(self._cache)))
 
             for url in skipped:
                 results_by_url[url] = self._not_checked(
