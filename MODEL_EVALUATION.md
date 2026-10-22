@@ -20,17 +20,25 @@ The main model card only specifies 512 characters per request. SMSense therefore
 
 ## Run an evaluation
 
-1. Prepare artifacts/api-server/data/evaluation.csv using artifacts/api-server/data/evaluation_template.csv.
-2. Label every row using a reviewer-verified ground truth. Supported benign labels are HAM, LEGITIMATE, BENIGN, SAFE, CLEAN, and NORMAL. Supported risky labels are SCAM, SPAM, PHISHING, FRAUD, and SMISHING.
+1. From the artifacts/api-server directory, prepare a starter dataset from any CSV that has a message column:
+
+   ~~~powershell
+   python tools/prepare_evaluation_csv.py --input "C:\path\to\your_messages.csv" --output data\evaluation.csv
+   ~~~
+
+   The helper preserves message text and copies source_id, sender, language, and scenario when present. It leaves label blank by default and never infers ground truth from a model prediction. You must fill the label column after independent review. Use --verified-label-column only when the source column contains independently human-verified labels.
+2. Use one of the supported labels for each message. Benign labels: HAM, LEGITIMATE, BENIGN, SAFE, CLEAN, NORMAL. Scam labels: SCAM, SPAM, PHISHING, FRAUD, SMISHING. Include at least one message from both classes. Do not label a message from SMSense's prediction alone.
 3. Give each message a stable, non-sensitive source_id. Add language, scenario, and sender where known. Do not upload private SMS or real OTPs unless you have a lawful basis and have removed secrets.
-4. Start the backend and wait until its required classifiers report ready.
+4. Start the backend and wait until the API is ready.
 5. From artifacts/api-server, run:
 
    ~~~powershell
-   python tools/evaluate_dataset.py --csv data/evaluation.csv --base-url http://127.0.0.1:4444 --threshold 50 --report data/evaluation_report.json --predictions data/evaluation_predictions.csv
+   python tools/evaluate_dataset.py --csv data\evaluation.csv --base-url http://127.0.0.1:4444 --threshold 50 --report data\evaluation_report.json --predictions data\evaluation_predictions.csv
    ~~~
 
-The runner uses /api/adversarial-test in batches of at most 20, so it does not create normal analysis-history entries. The prediction export omits message text by default. The report contains a combined-score confusion matrix and accuracy, precision, recall, specificity, F1, balanced accuracy and ROC-AUC, plus breakdowns by language and scenario. It also reports per-model score metrics when the API exposes them. Model-score comparisons are diagnostic; decide separate per-model thresholds on validation data before making a deployment decision.
+The evaluator rejects a missing file, missing/blank/unsupported labels, duplicate source IDs, and a dataset that contains only one class. It calls /api/adversarial-test in batches of at most 20, so it does not create normal analysis-history entries. The prediction export omits message text by default. The report contains a combined-score confusion matrix and accuracy, precision, recall, specificity, F1, balanced accuracy and ROC-AUC, plus breakdowns by language and scenario. It also reports per-model score metrics when the API exposes them. Model-score comparisons are diagnostic; decide separate per-model thresholds on validation data before making a deployment decision.
+
+If you do not yet have verified labels, you can still use tools/run_sample_and_report.py for operational diagnostics; those results do not establish accuracy.
 
 ## Build a test set that represents real use
 
