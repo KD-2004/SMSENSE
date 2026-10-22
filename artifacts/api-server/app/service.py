@@ -1,4 +1,5 @@
 from typing import Any
+import logging
 
 from .fusion import fuse
 from .models import HuggingFaceModels, ModelUnavailableError, OllamaClient
@@ -6,6 +7,8 @@ from .normalizer import normalize_message
 from .parser import parse_message
 from .rules import behavior_signals, language_hint, url_signals
 from .similarity import SimilarityStore
+
+logger = logging.getLogger(__name__)
 
 
 class AnalysisService:
@@ -82,17 +85,51 @@ class AnalysisService:
                     "similarity": 5,
                 },
             },
+            "explanation_status": {
+                "requested": bool(post_hoc),
+                "available": None if post_hoc else False,
+                "detail": "pending" if post_hoc else "not requested",
+            },
         }
         if post_hoc:
-            payload["post_hoc"] = await self.ollama.explain(
-                {
-                    "final_score": result.score,
-                    "final_label": result.label,
-                    "category": result.category,
-                    "top_evidence": result.top,
-                    "raw_message": parsed.raw,
-                    "normalized_message": normalized.normalized,
-                    "suspicious_phrases": behavior.combination_hits,
+            try:
+                payload["post_hoc"] = await self.ollama.explain(
+                    {
+                        "final_score": result.score,
+                        "final_label": result.label,
+                        "category": result.category,
+                        "top_evidence": result.top,
+                        "raw_message": parsed.raw,
+                        "normalized_message": normalized.normalized,
+                        "suspicious_phrases": behavior.combination_hits,
+                    }
+                )
+                payload["explanation_status"] = {
+                    "requested": True,
+                    "available": True,
+                    "detail": "Optional Qwen3 explanation generated",
                 }
-            )
+            except Exception as exc:
+                # Explanations are deliberately post-hoc and must never change
+                # a completed detection result or make the analysis unavailable.
+                logger.warning(
+                    "Optional post-hoc explanation unavailable (%s)",
+                    type(exc).__name__,
+                )
+                payload["post_hoc"] = {
+                    "summary": (
+                        "The optional explanation service is unavailable. "
+                        "The risk score and label were computed by the detection pipeline."
+                    ),
+                    "suspicious_phrases": behavior.combination_hits,
+                    "recommended_action": (
+                        "Do not click unexpected links or share OTPs, PINs, passwords, "
+                        "or payment details until the message is verified independently."
+                    ),
+                }
+                payload["explanation_status"] = {
+                    "requested": True,
+                    "available": False,
+                    "detail": f"Optional explanation unavailable ({type(exc).__name__})",
+                }
         return payload
