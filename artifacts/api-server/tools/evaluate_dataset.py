@@ -29,15 +29,28 @@ def parse_label(value: str, row_number: int) -> int:
         return 1
     if label in NEGATIVE_LABELS:
         return 0
+    if not label:
+        raise ValueError(
+            f"Row {row_number}: label is blank. Fill it with an independently verified "
+            "ground-truth label (BENIGN/HAM/LEGITIMATE or SCAM/SPAM/PHISHING/FRAUD). "
+            "Do not copy SMSense predictions into the label column."
+        )
     raise ValueError(
-        f"Row {row_number}: label must be one of {sorted(POSITIVE_LABELS | NEGATIVE_LABELS)}, got {value!r}"
+        f"Row {row_number}: unsupported label {value!r}. Use one of "
+        f"{sorted(POSITIVE_LABELS | NEGATIVE_LABELS)}."
     )
 
 
 def load_rows(csv_path: Path) -> list[dict[str, Any]]:
     if not csv_path.is_file():
-        raise FileNotFoundError(f"CSV file not found: {csv_path}")
+        raise FileNotFoundError(
+            f"Evaluation CSV not found: {csv_path.resolve()}. "
+            "Create a starter file with "
+            "python tools\\prepare_evaluation_csv.py --input <source.csv> --output data\\evaluation.csv, "
+            "then fill its label column with independently verified labels."
+        )
     rows: list[dict[str, Any]] = []
+    seen_source_ids: set[str] = set()
     with csv_path.open("r", newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
         required = {"message", "label"}
@@ -50,10 +63,16 @@ def load_rows(csv_path: Path) -> list[dict[str, Any]]:
             message = row.get("message") or ""
             if not message.strip():
                 raise ValueError(f"Row {row_number}: message cannot be empty")
+            source_id = (row.get("source_id") or f"row-{row_number:06d}").strip()
+            if not source_id:
+                source_id = f"row-{row_number:06d}"
+            if source_id in seen_source_ids:
+                raise ValueError(f"Row {row_number}: duplicate source_id {source_id!r}")
+            seen_source_ids.add(source_id)
             rows.append(
                 {
                     "row_number": row_number,
-                    "source_id": (row.get("source_id") or f"row-{row_number:06d}").strip(),
+                    "source_id": source_id,
                     "message": message,
                     "label": parse_label(row.get("label") or "", row_number),
                     "language": (row.get("language") or "unspecified").strip() or "unspecified",
@@ -64,6 +83,17 @@ def load_rows(csv_path: Path) -> list[dict[str, Any]]:
     if not rows:
         raise ValueError("CSV has a header but no labelled examples")
     return rows
+
+
+def validate_class_coverage(rows: list[dict[str, Any]]) -> None:
+    """Require at least one verified benign and scam example for a useful benchmark."""
+    labels = {int(row["label"]) for row in rows}
+    if labels != {0, 1}:
+        raise ValueError(
+            "Evaluation CSV must contain at least one independently verified benign "
+            "example (HAM/BENIGN/LEGITIMATE) and one scam example "
+            "(SCAM/SPAM/PHISHING/FRAUD). Add examples of both classes before evaluating."
+        )
 
 
 def roc_auc(rows: list[dict[str, Any]], score_key: str) -> float | None:
@@ -167,7 +197,11 @@ def main() -> int:
     if not 1 <= args.batch_size <= 20:
         parser.error("--batch-size must be between 1 and 20")
 
-    rows = load_rows(args.csv)
+    try:
+        rows = load_rows(args.csv)
+        validate_class_coverage(rows)
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
     base_url = args.base_url.rstrip("/")
     predictions: list[dict[str, Any]] = []
 
