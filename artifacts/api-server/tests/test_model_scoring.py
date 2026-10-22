@@ -237,3 +237,27 @@ def test_api_schema_keeps_model_assessment_similarity_and_sender(monkeypatch):
     assert response.model_assessment["model"] == "SMS-Shield"
     assert response.similarity["available"] is False
     assert response.explanation_status["requested"] is False
+
+
+def test_sms_shield_canonicalizes_unsupported_verdict_if_risk_is_valid():
+    result = SmsShieldClient._parse_result(
+        json.dumps({
+            "verdict": "neutral", "category": "general", "scam_type": None,
+            "risk": 55, "red_flags": [], "explanation": "Non-enum verdict."
+        })
+    )
+    assert result["verdict"] == "suspicious"
+    assert result["model_verdict"] == "neutral"
+    assert result["verdict_supported"] is False
+    assert result["verdict_consistent"] is False
+
+
+def test_sms_shield_does_not_accept_unsupported_verdict_without_valid_risk():
+    try:
+        SmsShieldClient._parse_result(
+            json.dumps({"verdict": "unknown", "category": "unknown", "red_flags": []})
+        )
+    except ModelUnavailableError:
+        pass
+    else:
+        raise AssertionError("Missing/invalid risk must remain an error")
