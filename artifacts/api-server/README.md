@@ -85,3 +85,18 @@ python -m pytest -m integration -q
 ```
 
 No accuracy claims should be made until predictions are evaluated against independently verified labels.
+
+
+## Review a completed sample-prediction run
+
+After your sample/adversarial runner has created a prediction CSV, generate a detailed local report from the backend directory:
+
+~~~powershell
+python tools/review_predictions.py --csv "C:\path\to\SMSense_API_Predictions.csv" --out-dir data\sample-review
+~~~
+
+The tool writes review_report.md (human-readable score distributions, failure cases, and model/fusion disagreements), review_rows.csv (row-level diagnostics, with SMS text omitted by default), and review_summary.json (machine-readable summary). Use the include-message-text option only when you need original SMS text in the local triage CSV and can keep that output private.
+
+Recognized verified-label columns are ground_truth, verified_label, actual_label, true_label, and expected_label. When one is present and contains recognized labels, precision, recall, specificity, F1, accuracy, and balanced accuracy are reported. Without verified labels, the tool explicitly states that it cannot measure accuracy from predictions alone.
+
+The report flags failed API calls, model verdict/risk disagreement, model-risk/fusion-score gaps, missing sender metadata, unchecked URL reputation, and unavailable similarity. These findings are manual-review signals, not proof that an individual prediction is wrong.

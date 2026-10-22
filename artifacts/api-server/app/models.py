@@ -200,14 +200,21 @@ class SmsShieldClient:
             raise ModelUnavailableError("SMS-Shield risk score must be between 0 and 100")
         risk = int(round(risk_number))
 
-        model_verdict = str(decoded.get("verdict", "")).strip().lower()
-        if model_verdict not in {"safe", "suspicious", "dangerous"}:
-            raise ModelUnavailableError(
-                f"SMS-Shield returned an unsupported verdict: {model_verdict!r}"
-            )
+        # The numeric risk score is SMSense's required model-output contract.
+        # Preserve any unsupported raw label for diagnosis, but derive a canonical
+        # verdict from a valid risk band instead of failing the entire SMS request.
+        model_verdict = str(decoded.get("verdict", "")).strip().lower()[:80]
+        verdict_supported = model_verdict in {"safe", "suspicious", "dangerous"}
         verdict = cls._expected_verdict(risk)
-        consistent = model_verdict == verdict
-        if not consistent:
+        consistent = verdict_supported and model_verdict == verdict
+        if not verdict_supported:
+            logger.warning(
+                "SMS-Shield returned unsupported verdict=%r with risk=%s; using canonical risk band=%s",
+                model_verdict,
+                risk,
+                verdict,
+            )
+        elif not consistent:
             logger.warning(
                 "SMS-Shield verdict/risk band mismatch: verdict=%s risk=%s; using risk band",
                 model_verdict,
@@ -232,6 +239,7 @@ class SmsShieldClient:
             "risk": risk,
             "verdict": verdict,
             "model_verdict": model_verdict,
+            "verdict_supported": verdict_supported,
             "verdict_consistent": consistent,
             "category": category or "unknown",
             "scam_type": scam_type,

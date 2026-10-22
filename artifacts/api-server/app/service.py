@@ -1,6 +1,7 @@
 from typing import Any
 import logging
 
+from .config import settings
 from .fusion import fuse
 from .models import HuggingFaceModels, ModelSignal, ModelUnavailableError, OllamaClient, SmsShieldClient
 from .normalizer import normalize_message
@@ -82,6 +83,46 @@ class AnalysisService:
             content_signal=content_signal,
             similarity_signal=similarity_signal,
         )
+        model_risk = int(model_assessment.get("risk", 0) or 0)
+        model_verdict = str(model_assessment.get("verdict", "unknown"))
+        verdict_supported = bool(model_assessment.get("verdict_supported", True))
+        verdict_consistent = bool(model_assessment.get("verdict_consistent", True))
+        review_reasons: list[str] = []
+        data_gaps: list[str] = []
+
+        if not verdict_supported:
+            review_reasons.append("model_returned_unsupported_verdict")
+        elif not verdict_consistent:
+            review_reasons.append("model_verdict_risk_band_mismatch")
+        if model_risk >= 50 and result.score < settings.suspicious_threshold:
+            review_reasons.append("model_risk_not_reflected_in_final_score")
+        if model_risk >= 70 and result.score < settings.high_risk_threshold:
+            review_reasons.append("high_model_risk_below_high_risk_threshold")
+
+        url_review_items = (url_signals(parsed) or {}).get("urls", [])
+        if not sender:
+            data_gaps.append("sender_not_provided")
+        if any(
+            isinstance(item, dict) and item.get("reputation") == "not_checked"
+            for item in url_review_items
+        ):
+            data_gaps.append("url_reputation_not_checked")
+        if not similarity_result.get("available", False):
+            data_gaps.append("semantic_similarity_unavailable")
+
+        decision_diagnostics = {
+            "model_risk": model_risk,
+            "model_verdict": model_verdict,
+            "model_verdict_supported": verdict_supported,
+            "model_verdict_consistent": verdict_consistent,
+            "final_risk_score": result.score,
+            "final_label": result.label,
+            "model_minus_final_score": model_risk - result.score,
+            "requires_manual_review": bool(review_reasons),
+            "review_reasons": list(dict.fromkeys(review_reasons)),
+            "data_gaps": list(dict.fromkeys(data_gaps)),
+        }
+
         payload: dict[str, Any] = {
             "risk_score": result.score,
             "label": result.label,
@@ -95,6 +136,7 @@ class AnalysisService:
                 ).upper().replace(" ", "_")
             ),
             "model_assessment": model_assessment,
+            "decision_diagnostics": decision_diagnostics,
             "language": language_hint(message),
             "raw_message": parsed.raw,
             "normalized_message": normalized.normalized,
