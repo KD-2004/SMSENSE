@@ -322,6 +322,16 @@ async def health() -> HealthResponse:
         },
     }
 
+    if settings.indicbert_enabled:
+        indicbert_ok, indicbert_detail = hf_status.get(
+            "indicbert",
+            (False, "Optional IndicBERT challenger status unavailable"),
+        )
+        components["hugging_face_indicbert"] = {
+            "available": indicbert_ok,
+            "detail": indicbert_detail,
+        }
+
     overall_ok = all(
         bool(component["available"])
         for component in components.values()
