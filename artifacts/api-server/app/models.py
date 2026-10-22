@@ -7,8 +7,17 @@ from dataclasses import dataclass
 from typing import Any
 import httpx
 from .config import settings
+from .parser import URL_RE
 
 logger = logging.getLogger(__name__)
+
+# The optional IndicBERT model card requires masking URLs and phone numbers
+# before inference. Keep this preprocessing separate from the raw SMS used by
+# the existing models and the explanation layer.
+INDICBERT_PHONE_RE = re.compile(
+    r"(?<!\\d)(?:\\+?91[\\s.-]?)?[6-9]\\d(?:[\\s.-]?\\d){8}(?!\\d)|"
+    r"(?<!\\d)\\+\\d[\\d\\s().-]{6,}\\d(?!\\d)"
+)
 
 
 class ModelUnavailableError(RuntimeError):
@@ -95,12 +104,21 @@ class HuggingFaceModels:
 
         def load_models() -> dict[str, tuple[bool, str]]:
             result: dict[str, tuple[bool, str]] = {}
-            for name, model_id in (("hinspam", settings.hinspam_model), ("silverguard", settings.silverguard_model)):
+            configured_models = [
+                ("hinspam", settings.hinspam_model),
+                ("silverguard", settings.silverguard_model),
+            ]
+            if settings.indicbert_enabled:
+                configured_models.append(("indicbert", settings.indicbert_model))
+
+            for name, model_id in configured_models:
                 try:
                     self._load(name, model_id)
                     result[name] = (True, f"{model_id} loaded successfully")
                 except ModelUnavailableError as exc:
                     result[name] = (False, str(exc))
+            if not settings.indicbert_enabled:
+                result["indicbert"] = (False, "Optional challenger disabled by INDICBERT_ENABLED=false")
             return result
 
         return await asyncio.to_thread(load_models)
@@ -205,6 +223,12 @@ class HuggingFaceModels:
             output, settings.hinspam_model
         ) * 15.0
 
+    @staticmethod
+    def _prepare_indicbert_text(raw: str) -> str:
+        """Apply the optional IndicBERT model card's URL/phone masking."""
+        value = URL_RE.sub("[URL]", raw or "")
+        return INDICBERT_PHONE_RE.sub("[PHONE]", value)
+
     async def signals(self, raw: str, sender: str | None) -> list[ModelSignal]:
         available, detail = self.package_status()
         if not available:
@@ -219,7 +243,7 @@ class HuggingFaceModels:
                 hin_output, settings.hinspam_model
             )
             silver_output = silverguard.predict(sender, raw)
-            return [
+            signals = [
                 ModelSignal(
                     "HinSpam",
                     True,
@@ -233,6 +257,45 @@ class HuggingFaceModels:
                     f"Pretrained SilverGuard ONNX threat_score={silver_output['threat_score']:.6f}",
                 ),
             ]
+
+            # IndicBERT is a measurement-only challenger at first. Its score is
+            # returned for the labelled evaluation runner but does not enter the
+            # fused production score until a held-out benchmark justifies it.
+            if settings.indicbert_enabled:
+                try:
+                    indicbert = self._load("indicbert", settings.indicbert_model)
+                    prepared_text = self._prepare_indicbert_text(raw)
+                    indic_output = indicbert(
+                        prepared_text,
+                        truncation=True,
+                        top_k=None,
+                    )
+                    indic_probability = self._risk_probability(
+                        indic_output,
+                        settings.indicbert_model,
+                    )
+                    signals.append(
+                        ModelSignal(
+                            "IndicBERT",
+                            True,
+                            indic_probability * 15.0,
+                            f"Optional multilingual challenger risk_probability={indic_probability:.6f}; diagnostic only",
+                        )
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Optional IndicBERT challenger unavailable (%s)",
+                        type(exc).__name__,
+                    )
+                    signals.append(
+                        ModelSignal(
+                            "IndicBERT",
+                            False,
+                            0.0,
+                            f"Optional challenger unavailable ({type(exc).__name__}); excluded from scoring",
+                        )
+                    )
+            return signals
         return await asyncio.to_thread(run)
 
 
