@@ -18,7 +18,7 @@ The HinSpam model card documents label 0 as ham and label 1 as spam. SMSense now
    python tools/evaluate_dataset.py --csv data/evaluation.csv --base-url http://127.0.0.1:4444 --threshold 50 --report data/evaluation_report.json --predictions data/evaluation_predictions.csv
    ~~~
 
-The runner uses /api/adversarial-test in batches of at most 20, so it does not create normal analysis-history entries. The prediction export omits message text by default. The report contains a combined-score confusion matrix and accuracy, precision, recall, specificity, F1, balanced accuracy and ROC-AUC, plus breakdowns by language and scenario. It also compares per-model scores when the API exposes them.
+The runner uses /api/adversarial-test in batches of at most 20, so it does not create normal analysis-history entries. The prediction export omits message text by default. The report contains a combined-score confusion matrix and accuracy, precision, recall, specificity, F1, balanced accuracy and ROC-AUC, plus breakdowns by language and scenario. It also reports per-model score metrics when the API exposes them. Model-score comparisons are diagnostic; decide separate per-model thresholds on validation data before making a deployment decision.
 
 ## Build a test set that represents real use
 
