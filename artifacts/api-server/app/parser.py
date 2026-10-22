@@ -28,6 +28,7 @@ class ParsedMessage:
     sender: str | None
     timestamp: datetime
     urls: list[str]
+    url_domains: list[str]
     domains: list[str]
     length: int
 
@@ -62,6 +63,7 @@ def _extract_host(value: str) -> str | None:
 
 def parse_message(raw: str, sender: str | None, timestamp: datetime | None) -> ParsedMessage:
     urls: list[str] = []
+    url_domains: list[str] = []
     domains: list[str] = []
     seen_urls: set[str] = set()
     seen_domains: set[str] = set()
@@ -78,6 +80,9 @@ def parse_message(raw: str, sender: str | None, timestamp: datetime | None) -> P
         if url_key not in seen_urls:
             seen_urls.add(url_key)
             urls.append(url)
+            # Keep a host for each deduplicated URL so URL-level evidence
+            # never becomes misaligned when several paths share one host.
+            url_domains.append(host)
 
         if host not in seen_domains:
             seen_domains.add(host)
@@ -88,6 +93,7 @@ def parse_message(raw: str, sender: str | None, timestamp: datetime | None) -> P
         sender=sender,
         timestamp=timestamp or datetime.now(timezone.utc),
         urls=urls,
+        url_domains=url_domains,
         domains=domains,
         length=len(raw),
     )
