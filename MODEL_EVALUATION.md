@@ -18,6 +18,14 @@ I compared it with OpenTextShield, an MIT-licensed multilingual BERT SMS classif
 
 The main model card only specifies 512 characters per request. SMSense therefore classifies longer pasted texts in overlapping 512-character segments and takes the highest segment risk. That is a deliberate recall-first policy; it can increase false positives on long copied conversations and must be measured.
 
+## Optional URL reputation enrichment
+
+The backend can optionally query the Google Safe Browsing Lookup API when `GOOGLE_SAFE_BROWSING_API_KEY` is configured in `artifacts/api-server/.env`. No key is bundled. With no key, URLs remain `not_checked` and the pipeline uses local structural signals only.
+
+When enabled, the integration sends extracted URL strings only—not the full SMS body or sender—to the provider. A URL can itself contain tracking identifiers or sensitive query parameters, so enable the integration only when external disclosure is acceptable. Lookups are bounded to ten URLs per message, run with limited concurrency and a timeout, and cache successful answers for one hour. Provider failures do not block classification. A positive threat-list match adds bounded URL evidence; a no-match response is not a guarantee of safety. The lookup does not follow redirects or visit the destination.
+
+This is threat-intelligence enrichment, not an accuracy improvement that can be quantified without independently labelled evaluation. Keep the reputation setting documented when reporting experiments so results from configurations with and without the provider are not conflated.
+
 ## Run an evaluation
 
 1. From the artifacts/api-server directory, prepare a starter dataset from any CSV that has a message column:
