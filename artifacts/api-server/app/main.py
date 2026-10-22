@@ -315,6 +315,15 @@ async def health() -> HealthResponse:
             "detail": faiss_detail,
         },
 
+        "google_safe_browsing": {
+            "available": bool(settings.google_safe_browsing_api_key),
+            "detail": (
+                "API key configured; provider is checked during URL lookups"
+                if settings.google_safe_browsing_api_key
+                else "Not configured; URL analysis uses local structural evidence only"
+            ),
+        },
+
         "sqlite": {
             "available": sqlite_ok,
             "detail": sqlite_detail,
