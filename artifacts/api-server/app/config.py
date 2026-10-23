@@ -60,6 +60,9 @@ class Settings:
     url_reputation_timeout_seconds: float = max(
         0.1, float(os.getenv("SMSENSE_URL_REPUTATION_TIMEOUT_SECONDS", "4.0"))
     )
+    classifier_timeout_seconds: float = max(
+        1.0, float(os.getenv("SMSENSE_CLASSIFIER_TIMEOUT_SECONDS", "300.0"))
+    )
 
 
 settings = Settings()
