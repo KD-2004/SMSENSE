@@ -315,7 +315,11 @@ def normalize_message(raw: str) -> NormalizationResult:
                 normalized_tokens.append(replacement)
                 detected_changes.append(f"{token} -> {replacement}")
                 spelling_detected = True
-                leet_detected = True
+                # Some known obfuscations are abbreviations (for example, "blck"),
+                # not leetspeak. Mark leetspeak only when a substitution actually
+                # occurs; fusion must not treat one mapping as two independent clues.
+                _decoded, is_leet = _leet_decode(original)
+                leet_detected = leet_detected or is_leet
                 continue
 
             if token in COMMON_MISSPELLINGS:
