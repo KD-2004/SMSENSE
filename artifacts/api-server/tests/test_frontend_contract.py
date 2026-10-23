@@ -102,7 +102,7 @@ def test_frontend_renders_a_realistic_backend_result_instead_of_only_parsing_it(
         pytest.skip("Node.js is unavailable; frontend rendering smoke test skipped")
 
     source = FRONTEND.read_text(encoding="utf-8")
-    scripts = re.findall(r"<script\\b[^>]*>(.*?)</script>", source, flags=re.DOTALL | re.IGNORECASE)
+    scripts = re.findall(r"<script\b[^>]*>(.*?)</script>", source, flags=re.DOTALL | re.IGNORECASE)
     frontend_script = next((part for part in scripts if "function renderAnalysisResult" in part), None)
     assert frontend_script, "Expected the frontend result-rendering function"
 
