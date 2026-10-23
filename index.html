@@ -1127,9 +1127,14 @@
         // ==================== CONFIGURATION ====================
         // Local-first default. Override before this script loads if your local port differs.
         // Example: window.SMSENSE_API_BASE = "http://127.0.0.1:4444"
+        const configuredApiBase = String(window.SMSENSE_API_BASE ?? "").trim();
+        const isHostedGitHubPages = /\.github\.io$/i.test(window.location.hostname);
         const API_BASE = String(
-            window.SMSENSE_API_BASE ?? "http://127.0.0.1:4444"
+            configuredApiBase || (isHostedGitHubPages ? "" : "http://127.0.0.1:4444")
         ).replace(/\/+$/, "");
+        const API_CONFIG_ERROR = isHostedGitHubPages && !configuredApiBase
+            ? "The hosted GitHub Pages frontend cannot reach Ollama on your computer through localhost. Run the frontend locally at http://127.0.0.1:5500, or configure SMSENSE_API_BASE to a deployed HTTPS backend and allow this site's origin in CORS_ALLOWED_ORIGINS."
+            : "";
 
         // ==================== STATE ====================
         let currentAnalysis = null;
@@ -1153,10 +1158,22 @@
             return d.toLocaleString();
         }
 
-        function getRiskLabelClass(risk) {
-            if (risk < 20) return 'low';
+        function getRiskLabelClass(value) {
+            // Prefer the backend's authoritative label when one is available.
+            // Numeric thresholds remain only for history rows that store a score.
+            if (typeof value === 'string') {
+                switch (value.toUpperCase()) {
+                    case 'LOW': return 'low';
+                    case 'SUSPICIOUS': return 'suspicious';
+                    case 'HIGH RISK': return 'high';
+                    case 'CRITICAL': return 'critical';
+                }
+            }
+            const risk = Number(value);
+            if (!Number.isFinite(risk)) return 'low';
+            if (risk < 25) return 'low';
             if (risk < 50) return 'suspicious';
-            if (risk < 80) return 'high';
+            if (risk < 75) return 'high';
             return 'critical';
         }
 
@@ -1212,6 +1229,7 @@
 
         // ==================== API LAYER (with per-endpoint timeout) ====================
         async function apiRequest(endpoint, options = {}, timeoutMs = 30000) {
+            if (API_CONFIG_ERROR) throw new Error(API_CONFIG_ERROR);
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -1274,6 +1292,12 @@
         }
 
         async function checkApiStatus() {
+            if (API_CONFIG_ERROR) {
+                document.querySelectorAll('#apiStatusDot, #headerStatusDot').forEach(el => el.classList.remove('online'));
+                document.getElementById('apiStatusText').textContent = 'API CONFIG REQUIRED';
+                document.getElementById('headerStatusText').textContent = 'BACKEND CONFIG NEEDED';
+                return false;
+            }
             try {
                 const data = await apiRequest('/api/healthz', {}, 10000);
                 if (data.status === 'ok') {
@@ -1546,12 +1570,27 @@
                     method: 'POST',
                     body: JSON.stringify({ message, sender, timestamp })
                 }, 30 * 60 * 1000); // 30 minutes for analysis
+                if (
+                    !result ||
+                    typeof result !== 'object' ||
+                    !Number.isFinite(Number(result.risk_score)) ||
+                    typeof result.label !== 'string' ||
+                    !result.label.trim()
+                ) {
+                    throw new Error(
+                        'The backend responded but did not return a usable risk score and label. ' +
+                        'Check the backend terminal for model/response errors, then retry.'
+                    );
+                }
                 console.log('SMSense analysis response:', result);
                 currentAnalysis = result;
                 currentAnalysisId = result?.id ?? null;
                 lastAnalysisTimestamp = new Date();
                 updateLastAnalysisTime();
                 renderAnalysisResult(result, resultContainer);
+                // The risk score is already rendered. Ask for optional narrative
+                // separately so Qwen latency cannot hold the primary result hostage.
+                loadPostHocExplanation(result);
                 resultContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 loadDashboard().catch(console.error);
                 renderURIIntel();
@@ -1592,7 +1631,7 @@
             }
             const risk = Number(result.risk_score ?? 0);
             const label = result.label || 'UNKNOWN';
-            const labelClass = getRiskLabelClass(risk);
+            const labelClass = getRiskLabelClass(label);
             const category = result.category || 'UNKNOWN';
             const language = result.language || 'unknown';
             const evidence = result.evidence || {};
@@ -1689,12 +1728,93 @@
 
             <div class="card">
                 <div class="card-title">AI-Generated Explanation</div>
-                ${postHoc.summary ? `<p>${escapeHtml(postHoc.summary)}</p>` : '<p class="text-muted">No explanation returned.</p>'}
-                ${postHoc.suspicious_phrases?.length ? `<div style="margin-top:15px;"><strong>Explanation Phrases</strong><ul style="margin-top:8px; padding-left:20px;">${postHoc.suspicious_phrases.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>` : ''}
-                ${postHoc.recommended_action ? `<div style="margin-top:15px; padding:12px; background:var(--bg-input); border-radius:6px; border-left:3px solid var(--accent);"><strong>Recommended Action</strong><div style="margin-top:6px; color:var(--text-secondary);">${escapeHtml(postHoc.recommended_action)}</div></div>` : ''}
+                <p id="postHocStatus" class="text-muted" style="font-size:12px;">${postHoc.summary ? 'Saved explanation' : 'The risk result is ready. Generating the optional explanation separately…'}</p>
+                <p id="postHocSummary">${postHoc.summary ? escapeHtml(postHoc.summary) : ''}</p>
+                <div id="postHocPhrases">
+                    ${postHoc.suspicious_phrases?.length ? `<div style="margin-top:15px;"><strong>Explanation Phrases</strong><ul style="margin-top:8px; padding-left:20px;">${postHoc.suspicious_phrases.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>` : ''}
+                </div>
+                <div id="postHocAction">
+                    ${postHoc.recommended_action ? `<div style="margin-top:15px; padding:12px; background:var(--bg-input); border-radius:6px; border-left:3px solid var(--accent);"><strong>Recommended Action</strong><div style="margin-top:6px; color:var(--text-secondary);">${escapeHtml(postHoc.recommended_action)}</div></div>` : ''}
+                </div>
             </div>`;
 
             container.innerHTML = html;
+        }
+
+        async function loadPostHocExplanation(result) {
+            try {
+                const explanation = await apiRequest('/api/explain', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        risk_score: result.risk_score,
+                        label: result.label,
+                        category: result.category || 'GENERAL_MESSAGE',
+                        top_evidence: result.explanation?.top_contributing_evidence || [],
+                        raw_message: result.raw_message || '',
+                        normalized_message: result.normalized_message || '',
+                        suspicious_phrases: Array.isArray(result.suspicious_phrases)
+                            ? result.suspicious_phrases
+                            : []
+                    })
+                }, 180000);
+
+                // Do not let a slow response for an older SMS overwrite a newer one.
+                if (currentAnalysis !== result) return;
+                renderPostHocExplanation(explanation);
+            } catch (error) {
+                if (currentAnalysis !== result) return;
+                renderPostHocExplanation({
+                    available: false,
+                    detail: error.message || 'Optional explanation unavailable',
+                    summary: 'The optional AI explanation could not be loaded. The primary risk result above is still available.',
+                    suspicious_phrases: result.suspicious_phrases || [],
+                    recommended_action: 'Verify the sender independently. Do not open unexpected links or share OTPs, PINs, passwords, or payment details until the message is verified through an official channel.'
+                });
+            }
+        }
+
+        function renderPostHocExplanation(explanation) {
+            const status = document.getElementById('postHocStatus');
+            const summary = document.getElementById('postHocSummary');
+            const phrases = document.getElementById('postHocPhrases');
+            const action = document.getElementById('postHocAction');
+            if (!status || !summary || !phrases || !action) return;
+
+            status.textContent = explanation.available
+                ? 'Optional AI explanation ready.'
+                : `Fallback guidance shown: ${explanation.detail || 'optional explanation unavailable'}.`;
+            summary.textContent = explanation.summary || 'No explanation summary was returned. The primary risk score remains available.';
+
+            phrases.replaceChildren();
+            const phraseList = Array.isArray(explanation.suspicious_phrases)
+                ? explanation.suspicious_phrases
+                : [];
+            if (phraseList.length) {
+                const title = document.createElement('strong');
+                title.textContent = 'Explanation Phrases';
+                phrases.appendChild(title);
+                const list = document.createElement('ul');
+                list.style.cssText = 'margin-top:8px; padding-left:20px;';
+                phraseList.slice(0, 10).forEach(phrase => {
+                    const item = document.createElement('li');
+                    item.textContent = String(phrase);
+                    list.appendChild(item);
+                });
+                phrases.appendChild(list);
+            }
+
+            action.replaceChildren();
+            if (explanation.recommended_action) {
+                const panel = document.createElement('div');
+                panel.style.cssText = 'margin-top:15px; padding:12px; background:var(--bg-input); border-radius:6px; border-left:3px solid var(--accent);';
+                const title = document.createElement('strong');
+                title.textContent = 'Recommended Action';
+                const text = document.createElement('div');
+                text.style.cssText = 'margin-top:6px; color:var(--text-secondary);';
+                text.textContent = explanation.recommended_action;
+                panel.append(title, text);
+                action.appendChild(panel);
+            }
         }
 
         function renderEvidenceBars(evidence) {
