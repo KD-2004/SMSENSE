@@ -5,7 +5,7 @@ import os
 import pytest
 
 from app.config import settings
-from app.models import OllamaClient, SmsShieldClient
+from app.models import OllamaClient
 
 
 REAL_RUNTIME = os.getenv("RUN_REAL_MODEL_TESTS", "").strip().lower() == "true"
@@ -16,29 +16,55 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.integration
-def test_primary_sms_shield_model_returns_structured_result():
-    """Exercise the detector that actually powers SMSense, not retired challengers."""
+def test_live_analyze_endpoint_returns_frontend_renderable_sms_shield_result(monkeypatch):
+    """Exercise real inference through the same API route used by the browser."""
+    import httpx
+    import app.main as api
 
-    async def run():
-        client = SmsShieldClient()
-        available, detail = await client.status()
-        assert available, detail
+    # Keep this opt-in integration test from writing sample messages to the user's
+    # real local history database.
+    monkeypatch.setattr(api.storage, "save_analysis", lambda _result: 12345)
 
-        result = await client.classify(
-            "Your bank account will be blocked. Update KYC now at https://example.com/verify.",
-            "VM-SBIHELP",
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app),
+            base_url="http://testserver",
+            timeout=700,
+        ) as client:
+            response = await client.post(
+                "/api/analyze",
+                json={
+                    "message": "Your bank account will be blocked. Update KYC now at https://example.com/verify.",
+                    "sender": "VM-SBIHELP",
+                },
+            )
+        assert response.status_code == 200, response.text
+        result = response.json()
+
+        # These are the fields the visible frontend needs to render a complete result.
+        for field in (
+            "risk_score", "label", "category", "language", "raw_message",
+            "normalized_message", "model_assessment", "decision_diagnostics",
+            "evidence", "suspicious_phrases", "url_analysis", "obfuscation",
+            "explanation", "storage_status",
+        ):
+            assert field in result, f"API response is missing frontend field: {field}"
+
+        assert result["id"] == 12345
+        assert 0 <= result["risk_score"] <= 100
+        assert result["label"] in {"LOW", "SUSPICIOUS", "HIGH RISK", "CRITICAL"}
+        assert result["model_assessment"]["model"] == "SMS-Shield"
+        assert result["model_assessment"]["model_id"] == settings.sms_shield_model
+        assert 0 <= result["model_assessment"]["risk"] <= 100
+        assert isinstance(result["evidence"], dict)
+        assert isinstance(result["explanation"]["model_signals"], list)
+        assert any(
+            signal.get("name") == "SMS-Shield"
+            for signal in result["explanation"]["model_signals"]
         )
-        assert result["model"] == "SMS-Shield"
-        assert result["model_id"] == settings.sms_shield_model
-        assert isinstance(result["risk"], int)
-        assert 0 <= result["risk"] <= 100
-        assert result["verdict"] in {"safe", "suspicious", "dangerous"}
-        assert isinstance(result.get("red_flags"), list)
-        assert result.get("segments_analyzed", 0) >= 1
-        assert len(result.get("segment_risks", [])) >= 1
+        return result
 
-    asyncio.run(run())
-
+    asyncio.run(request())
 
 @pytest.mark.integration
 def test_optional_qwen_explainer_returns_usable_content_when_installed():
