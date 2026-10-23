@@ -399,8 +399,16 @@ class SmsShieldClient:
         }
 
         last_error: ModelUnavailableError | None = None
+        # Honour the configured classifier deadline. A hard-coded 300-second
+        # HTTP timeout used to fail slow local inference even when
+        # SMSENSE_CLASSIFIER_TIMEOUT_SECONDS was set to 600 seconds or higher.
+        request_timeout = max(1.0, float(settings.classifier_timeout_seconds))
+        timeout = httpx.Timeout(
+            request_timeout,
+            connect=min(10.0, request_timeout),
+        )
         try:
-            async with httpx.AsyncClient(timeout=300) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 # Ollama documents JSON mode, but some Qwen3-derived model builds
                 # can return an empty or unusable content field with format=json.
                 # Retry once without the format constraint while keeping thinking
