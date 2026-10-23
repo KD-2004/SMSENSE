@@ -230,9 +230,18 @@ def _tokens(text: str) -> list[str]:
         ->
         ["do", "not", "share", "your", "otp"]
     """
+    # Normalize Unicode apostrophes *before* tokenization. If we convert them
+    # after the regex split, “don’t” becomes ["don", "t"] and the negation
+    # detector can incorrectly treat a safety warning as a credential request.
+    normalized = (
+        (text or "")
+        .lower()
+        .replace("’", "'")
+        .replace("‘", "'")
+    )
     return re.findall(
         r"[a-zA-Z0-9']+",
-        (text or "").lower(),
+        normalized,
     )
 
 

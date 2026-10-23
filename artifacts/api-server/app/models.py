@@ -58,9 +58,18 @@ class OllamaClient:
             return False, f"Ollama unavailable while checking {model_name}: {type(exc).__name__}"
 
     async def status(self) -> tuple[bool, str]:
-        chat_ok, chat_detail = await self.model_status(settings.ollama_chat_model)
-        embedding_ok, embedding_detail = await self.model_status(settings.ollama_embedding_model)
-        return chat_ok and embedding_ok, f"chat={chat_detail}; embedding={embedding_detail}"
+        """Report Ollama runtime reachability separately from optional model readiness."""
+        try:
+            async with httpx.AsyncClient(timeout=2) as client:
+                response = await client.get(f"{self.base_url}/api/tags")
+            if not response.is_success:
+                return False, f"Ollama returned HTTP {response.status_code}"
+            return True, (
+                "Ollama API is reachable. Readiness for the optional chat/embedding "
+                "models and primary SMS-Shield classifier is reported separately."
+            )
+        except Exception as exc:
+            return False, f"Ollama runtime unavailable: {type(exc).__name__}"
 
     async def embed(self, prompt: str) -> list[float]:
         try:
@@ -390,8 +399,16 @@ class SmsShieldClient:
         }
 
         last_error: ModelUnavailableError | None = None
+        # Honour the configured classifier deadline. A hard-coded 300-second
+        # HTTP timeout used to fail slow local inference even when
+        # SMSENSE_CLASSIFIER_TIMEOUT_SECONDS was set to 600 seconds or higher.
+        request_timeout = max(1.0, float(settings.classifier_timeout_seconds))
+        timeout = httpx.Timeout(
+            request_timeout,
+            connect=min(10.0, request_timeout),
+        )
         try:
-            async with httpx.AsyncClient(timeout=300) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 # Ollama documents JSON mode, but some Qwen3-derived model builds
                 # can return an empty or unusable content field with format=json.
                 # Retry once without the format constraint while keeping thinking

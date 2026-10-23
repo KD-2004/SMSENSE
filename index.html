@@ -963,7 +963,7 @@
                     </div>
                     <div class="flex gap-10 align-center">
                         <button class="btn" id="analyzeBtn" onclick="performAnalyze()">ANALYZE SMS →</button>
-                        <button class="clear-btn" onclick="clearAnalyzeForm()">CLEAR</button>
+                        <button class="clear-btn" id="clearAnalyzeBtn" onclick="clearAnalyzeForm()">CLEAR</button>
                     </div>
                     <div class="example-buttons">
                         <span style="font-size:13px; color:var(--text-muted);">Examples:</span>
@@ -1108,15 +1108,15 @@
                     <div class="form-group">
                         <label class="form-label">Was this detection helpful?</label>
                         <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                            <button class="btn btn-secondary" id="btnCorrect" onclick="setFeedback(true, this)">✓ Correct Detection</button>
-                            <button class="btn btn-secondary" id="btnIncorrect" onclick="setFeedback(false, this)">✕ Incorrect Detection</button>
+                            <button class="btn btn-secondary" id="btnCorrect" onclick="setFeedback(true, this)" disabled>✓ Correct Detection</button>
+                            <button class="btn btn-secondary" id="btnIncorrect" onclick="setFeedback(false, this)" disabled>✕ Incorrect Detection</button>
                         </div>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Note (optional)</label>
                         <input type="text" id="feedbackNote" placeholder="Add your note...">
                     </div>
-                    <button class="btn" onclick="submitFeedback()">SUBMIT FEEDBACK</button>
+                    <button class="btn" id="submitFeedbackBtn" onclick="submitFeedback()" disabled>SUBMIT FEEDBACK</button>
                 </div>
                 <div id="feedbackResult"></div>
             </div>
@@ -1129,12 +1129,15 @@
         // Example: window.SMSENSE_API_BASE = "http://127.0.0.1:4444"
         const configuredApiBase = String(window.SMSENSE_API_BASE ?? "").trim();
         const isHostedGitHubPages = /\.github\.io$/i.test(window.location.hostname);
+        const isFileProtocol = window.location.protocol === "file:";
         const API_BASE = String(
             configuredApiBase || (isHostedGitHubPages ? "" : "http://127.0.0.1:4444")
         ).replace(/\/+$/, "");
         const API_CONFIG_ERROR = isHostedGitHubPages && !configuredApiBase
             ? "The hosted GitHub Pages frontend cannot reach Ollama on your computer through localhost. Run the frontend locally at http://127.0.0.1:5500, or configure SMSENSE_API_BASE to a deployed HTTPS backend and allow this site's origin in CORS_ALLOWED_ORIGINS."
-            : "";
+            : isFileProtocol
+                ? "The frontend was opened directly from a file. Serve the project folder at http://127.0.0.1:5500, then open that address so browser requests can use the configured local API."
+                : "";
 
         // ==================== STATE ====================
         let currentAnalysis = null;
@@ -1279,8 +1282,11 @@
 
             } catch (error) {
                 if (error.name === 'AbortError') {
+                    const timeoutLabel = timeoutMs >= 60000
+                        ? `${Math.ceil(timeoutMs / 60000)} minute${Math.ceil(timeoutMs / 60000) === 1 ? '' : 's'}`
+                        : `${Math.ceil(timeoutMs / 1000)} second${Math.ceil(timeoutMs / 1000) === 1 ? '' : 's'}`;
                     throw new Error(
-                        `Request timed out after ${Math.round(timeoutMs / 60000)} minutes. Check the backend terminal for the exact inference or model timeout.`
+                        `Request timed out after ${timeoutLabel}. Check the backend terminal for the exact inference or model timeout.`
                     );
                 }
                 if (error instanceof TypeError) {
@@ -1465,11 +1471,12 @@
         function updateLatestAnalysisCard() {
             const card = document.getElementById('latestAnalysisCard');
             const content = document.getElementById('latestAnalysisContent');
+            if (!card || !content) return;
             if (currentAnalysis) {
                 card.classList.remove('hidden');
                 const risk = Number(currentAnalysis.risk_score || 0);
                 const label = currentAnalysis.label || 'UNKNOWN';
-                const labelClass = getRiskLabelClass(risk);
+                const labelClass = getRiskLabelClass(label);
                 content.innerHTML = `
                     <div class="flex gap-10 align-center flex-wrap">
                         <div class="risk-score-circle" style="width:80px; height:80px; border-width:2px; font-size:20px; border-color:${getRiskColor(label)};">
@@ -1517,6 +1524,30 @@
             document.getElementById('analyzeTimestamp').value = '';
             updateCharCount();
             document.getElementById('analyzeResultPlaceholder').innerHTML = '';
+            clearSelectedAnalysisContext();
+        }
+
+        // Reset selection-dependent UI any time the target SMS/analysis changes.
+        // This prevents stale scores, explanations, and feedback from carrying over
+        // to a new message or a different history record.
+        function clearSelectedAnalysisContext() {
+            currentAnalysis = null;
+            currentAnalysisId = null;
+            feedbackHelpful = null;
+            lastAnalysisTimestamp = null;
+            updateLastAnalysisTime();
+            updateLatestAnalysisCard();
+            renderURIIntel();
+            renderModels();
+            renderFeedbackInfo();
+            document.getElementById('feedbackResult').innerHTML = '';
+            document.getElementById('feedbackNote').value = '';
+            document.querySelectorAll('#view-feedback .btn-secondary').forEach(button => {
+                button.classList.remove('active');
+                button.style.background = '';
+                button.style.color = '';
+                button.style.borderColor = '';
+            });
         }
 
         function updateCharCount() {
@@ -1530,16 +1561,22 @@
             const timestampEl = document.getElementById('analyzeTimestamp');
             const btn = document.getElementById('analyzeBtn');
             const resultContainer = document.getElementById('analyzeResultPlaceholder');
+            const clearBtn = document.getElementById('clearAnalyzeBtn');
+
+            // Ctrl+Enter must not start another request while a model call is active.
+            if (btn.disabled) return;
 
             const message = messageEl.value.trim();
             if (!message) {
                 resultContainer.innerHTML = `<div class="alert">Please enter a message before analyzing.</div>`;
                 return;
             }
+            clearSelectedAnalysisContext();
             const sender = senderEl.value.trim() || null;
             const timestamp = timestampEl.value.trim() || null;
 
             btn.disabled = true;
+            if (clearBtn) clearBtn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span> AI ANALYSIS IN PROGRESS';
 
             // Loading UI with pipeline and elapsed timer
@@ -1595,7 +1632,7 @@
                 renderAnalysisResult(result, resultContainer);
                 // The risk score is already rendered. Ask for optional narrative
                 // separately so Qwen latency cannot hold the primary result hostage.
-                loadPostHocExplanation(result);
+                loadPostHocExplanation(result, resultContainer);
                 resultContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 loadDashboard().catch(console.error);
                 renderURIIntel();
@@ -1612,6 +1649,7 @@
             } finally {
                 clearInterval(timer);
                 btn.disabled = false;
+                if (clearBtn) clearBtn.disabled = false;
                 btn.innerHTML = 'ANALYZE SMS →';
             }
         }
@@ -1622,6 +1660,7 @@
 
         function updateLastAnalysisTime() {
             const el = document.getElementById('lastAnalysisTime');
+            if (!el) return;
             if (lastAnalysisTimestamp) {
                 el.textContent = `Last analysis: ${lastAnalysisTimestamp.toLocaleTimeString()}`;
             } else {
@@ -1748,7 +1787,8 @@
             container.innerHTML = html;
         }
 
-        async function loadPostHocExplanation(result) {
+        async function loadPostHocExplanation(result, resultContainer) {
+            if (!resultContainer) return;
             try {
                 const explanation = await apiRequest('/api/explain', {
                     method: 'POST',
@@ -1767,7 +1807,7 @@
 
                 // Do not let a slow response for an older SMS overwrite a newer one.
                 if (currentAnalysis !== result) return;
-                renderPostHocExplanation(explanation);
+                renderPostHocExplanation(explanation, resultContainer);
             } catch (error) {
                 if (currentAnalysis !== result) return;
                 renderPostHocExplanation({
@@ -1776,15 +1816,18 @@
                     summary: 'The optional AI explanation could not be loaded. The primary risk result above is still available.',
                     suspicious_phrases: result.suspicious_phrases || [],
                     recommended_action: 'Verify the sender independently. Do not open unexpected links or share OTPs, PINs, passwords, or payment details until the message is verified through an official channel.'
-                });
+                }, resultContainer);
             }
         }
 
-        function renderPostHocExplanation(explanation) {
-            const status = document.getElementById('postHocStatus');
-            const summary = document.getElementById('postHocSummary');
-            const phrases = document.getElementById('postHocPhrases');
-            const action = document.getElementById('postHocAction');
+        function renderPostHocExplanation(explanation, resultContainer) {
+            // Both the analysis view and history-detail view can be in the DOM at
+            // the same time, each with the same local explanation element IDs.
+            // Always update the container whose request produced this response.
+            const status = resultContainer?.querySelector('#postHocStatus');
+            const summary = resultContainer?.querySelector('#postHocSummary');
+            const phrases = resultContainer?.querySelector('#postHocPhrases');
+            const action = resultContainer?.querySelector('#postHocAction');
             if (!status || !summary || !phrases || !action) return;
 
             status.textContent = explanation.available
@@ -1966,7 +2009,7 @@
             }
             let html = '<table><thead><tr><th>ID</th><th>Time</th><th>Message</th><th>Score</th><th>Label</th><th>Category</th><th>Language</th><th>Sender</th></tr></thead><tbody>';
             items.forEach(item => {
-                const labelClass = getRiskLabelClass(Number(item.risk_score || 0));
+                const labelClass = getRiskLabelClass(item.label || Number(item.risk_score || 0));
                 html += `<tr style="cursor:pointer;" onclick="loadHistoryDetail(${item.id})">
                     <td>${item.id}</td>
                     <td>${formatDate(item.created_at)}</td>
@@ -1997,12 +2040,17 @@
         async function loadHistoryDetail(id) {
             try {
                 const analysis = await apiRequest(`/api/history/${id}`, {}, 30000);
+                clearSelectedAnalysisContext();
                 currentAnalysis = analysis;
                 currentAnalysisId = id;
                 lastAnalysisTimestamp = new Date(analysis.created_at);
                 updateLastAnalysisTime();
                 const detailContainer = document.getElementById('historyDetailContainer');
                 renderAnalysisResult(analysis, detailContainer);
+                // Primary analyses are stored before the optional explanation is requested.
+                // Load that explanation here too, otherwise history details stay in a
+                // permanent "Generating..." state even though the primary result exists.
+                if (!analysis.post_hoc?.summary) loadPostHocExplanation(analysis, detailContainer);
                 detailContainer.scrollIntoView({ behavior: 'smooth' });
                 renderURIIntel();
                 renderModels();
@@ -2072,19 +2120,42 @@
         // ==================== FEEDBACK ====================
         function renderFeedbackInfo() {
             const container = document.getElementById('feedbackAnalysisInfo');
+            const submitButton = document.getElementById('submitFeedbackBtn');
+            const hasSavedAnalysis = Number.isInteger(Number(currentAnalysisId)) && Number(currentAnalysisId) > 0;
+            const choicesEnabled = Boolean(currentAnalysis && hasSavedAnalysis);
+            const correctButton = document.getElementById('btnCorrect');
+            const incorrectButton = document.getElementById('btnIncorrect');
+            if (correctButton) correctButton.disabled = !choicesEnabled;
+            if (incorrectButton) incorrectButton.disabled = !choicesEnabled;
+            if (!choicesEnabled) feedbackHelpful = null;
+            if (submitButton) submitButton.disabled = !choicesEnabled || feedbackHelpful === null;
+
             if (currentAnalysis) {
-                const labelClass = getRiskLabelClass(Number(currentAnalysis.risk_score || 0));
+                const labelClass = getRiskLabelClass(currentAnalysis.label || Number(currentAnalysis.risk_score || 0));
+                const message = hasSavedAnalysis
+                    ? ''
+                    : '<p class="text-muted" style="margin-top:8px;">This result was not saved to history, so feedback cannot be linked to an analysis ID. Resolve the history-storage problem first.</p>';
                 container.innerHTML = `<div style="background:var(--bg-input); padding:10px; border-radius:6px;">
-                    <strong>Analysis ID:</strong> ${currentAnalysisId || 'current'} &nbsp;|&nbsp;
+                    <strong>Analysis ID:</strong> ${hasSavedAnalysis ? currentAnalysisId : 'Not saved'} &nbsp;|&nbsp;
                     <strong>Score:</strong> ${currentAnalysis.risk_score} &nbsp;|&nbsp;
                     <strong>Label:</strong> <span class="badge badge-${labelClass}">${escapeHtml(currentAnalysis.label)}</span>
-                </div>`;
+                </div>${message}`;
             } else {
                 container.innerHTML = '<p class="text-muted">No analysis selected. Run an analysis first.</p>';
             }
         }
 
         function setFeedback(helpful, button) {
+            const hasSavedAnalysis = Boolean(
+                currentAnalysis &&
+                Number.isInteger(Number(currentAnalysisId)) &&
+                Number(currentAnalysisId) > 0
+            );
+            if (!hasSavedAnalysis) {
+                feedbackHelpful = null;
+                renderFeedbackInfo();
+                return;
+            }
             feedbackHelpful = helpful;
             document.querySelectorAll('#view-feedback .btn-secondary').forEach(btn => {
                 btn.classList.remove('active');
@@ -2096,16 +2167,21 @@
             button.style.background = 'var(--accent-grad)';
             button.style.color = '#fff';
             button.style.borderColor = 'transparent';
+            renderFeedbackInfo();
         }
 
         async function submitFeedback() {
             if (!currentAnalysis) { alert('No analysis to provide feedback on.'); return; }
+            if (!Number.isInteger(Number(currentAnalysisId)) || Number(currentAnalysisId) <= 0) {
+                document.getElementById('feedbackResult').innerHTML = '<div class="alert">Feedback requires a saved analysis ID. This result was not saved to history, so it cannot be linked to feedback.</div>';
+                return;
+            }
             if (feedbackHelpful === null) { alert('Please select whether the detection was correct or incorrect.'); return; }
             const note = document.getElementById('feedbackNote').value.trim();
             try {
                 const response = await apiRequest('/api/feedback', {
                     method: 'POST',
-                    body: JSON.stringify({ analysis_id: currentAnalysisId || null, helpful: feedbackHelpful, note: note || null })
+                    body: JSON.stringify({ analysis_id: Number(currentAnalysisId), helpful: feedbackHelpful, note: note || null })
                 }, 30000);
                 document.getElementById('feedbackResult').innerHTML = '<div class="alert alert-info">Feedback submitted successfully.</div>';
                 // Reset
@@ -2117,6 +2193,7 @@
                     btn.style.color = '';
                     btn.style.borderColor = '';
                 });
+                renderFeedbackInfo();
             } catch (error) {
                 document.getElementById('feedbackResult').innerHTML = `<div class="alert">${escapeHtml(error.message)}</div>`;
             }
@@ -2147,11 +2224,22 @@
                 loadDashboard();
                 loadHealth();
             } else {
-                document.getElementById('view-dashboard').innerHTML = `
-                    <div class="alert">
-                        <strong>SMSense backend is offline.</strong><br>
-                        Start the FastAPI server at <code>http://127.0.0.1:4444</code>, then reload this page.
-                    </div>`;
+                const dashboard = document.getElementById('view-dashboard');
+                if (!dashboard) return;
+                if (API_CONFIG_ERROR) {
+                    dashboard.innerHTML = `
+                        <div class="alert">
+                            <strong>Frontend configuration required.</strong><br><br>
+                            ${escapeHtml(API_CONFIG_ERROR)}
+                        </div>`;
+                } else {
+                    dashboard.innerHTML = `
+                        <div class="alert">
+                            <strong>SMSense backend is offline.</strong><br><br>
+                            Start the FastAPI server at <code>http://127.0.0.1:4444</code>, verify it at
+                            <code>http://127.0.0.1:4444/api/healthz</code>, then reload this page.
+                        </div>`;
+                }
             }
         }
     </script>
