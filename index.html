@@ -1524,9 +1524,13 @@
             document.getElementById('analyzeTimestamp').value = '';
             updateCharCount();
             document.getElementById('analyzeResultPlaceholder').innerHTML = '';
+            clearSelectedAnalysisContext();
+        }
 
-            // Clear the selected result as well as the visible form, so other
-            // views cannot keep showing stale evidence or accept stale feedback.
+        // Reset selection-dependent UI any time the target SMS/analysis changes.
+        // This prevents stale scores, explanations, and feedback from carrying over
+        // to a new message or a different history record.
+        function clearSelectedAnalysisContext() {
             currentAnalysis = null;
             currentAnalysisId = null;
             feedbackHelpful = null;
@@ -1567,6 +1571,7 @@
                 resultContainer.innerHTML = `<div class="alert">Please enter a message before analyzing.</div>`;
                 return;
             }
+            clearSelectedAnalysisContext();
             const sender = senderEl.value.trim() || null;
             const timestamp = timestampEl.value.trim() || null;
 
@@ -2031,6 +2036,7 @@
         async function loadHistoryDetail(id) {
             try {
                 const analysis = await apiRequest(`/api/history/${id}`, {}, 30000);
+                clearSelectedAnalysisContext();
                 currentAnalysis = analysis;
                 currentAnalysisId = id;
                 lastAnalysisTimestamp = new Date(analysis.created_at);
