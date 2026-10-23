@@ -51,6 +51,6 @@ The analysis result is shown as soon as the primary SMS-Shield inference and bou
 - The primary classifier has a 600-second overall deadline by default (`SMSENSE_CLASSIFIER_TIMEOUT_SECONDS`). Raise it in `.env` for slower hardware or very long messages; timeouts return an explicit API error rather than hanging indefinitely.
 - The optional IndicBERT diagnostic is bounded by `SMSENSE_CHALLENGER_TIMEOUT_SECONDS` (2 seconds by default) and cannot change the fused risk score.
 - URL reputation enrichment waits up to `SMSENSE_URL_REPUTATION_TIMEOUT_SECONDS` (4 seconds by default); URL lookup failure does not discard the model result.
-- FAISS similarity uses a three-example demo index by default. It should not be treated as a reliable classifier until a larger labelled corpus is tested.
+- FAISS similarity uses a three-example demo index by default. Its matches are displayed for diagnosis but do not affect risk scoring unless `SIMILARITY_SCORING_ENABLED=true` is explicitly set. Keep scoring disabled until a larger independently labelled, campaign-grouped corpus demonstrates incremental value.
 - Run backend unit tests in the server environment with `python -m pytest -q`.
 - No accuracy claims should be made until predictions are compared with independently verified labels.
