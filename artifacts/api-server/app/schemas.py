@@ -51,6 +51,7 @@ class AnalysisResponse(BaseModel):
     decision_diagnostics: dict[str, Any] = Field(default_factory=dict)
     similarity: dict[str, Any] = Field(default_factory=dict)
     explanation_status: dict[str, Any] | None = None
+    storage_status: dict[str, Any] = Field(default_factory=dict)
     evidence: EvidenceGroups
     suspicious_phrases: list[str]
     url_analysis: dict[str, Any]
