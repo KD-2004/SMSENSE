@@ -1547,7 +1547,7 @@
                         <span>Running phishing analysis pipeline...</span>
                     </div>
                     <div style="margin-top:14px; font-size:12px; color:var(--text-muted); line-height:1.8;">
-                        Parsing · Normalization · Model inference · Evidence fusion · Explanation
+                        Parsing · SMS-Shield inference · Evidence fusion · Optional enrichment
                     </div>
                     <div id="analysisElapsed" style="margin-top:8px; font-size:11px; color:var(--text-muted);">0s elapsed</div>
                     <div id="slowMessage" style="margin-top:12px; font-size:12px; color:var(--yellow); display:none;"></div>
@@ -1559,9 +1559,9 @@
                 if (status) status.textContent = `${elapsed}s elapsed`;
                 const slowMsg = resultContainer.querySelector('#slowMessage');
                 if (slowMsg) {
-                    if (elapsed >= 60 && elapsed < 180) slowMsg.style.display = 'block';
-                    if (elapsed >= 60) slowMsg.textContent = 'Your local AI models are still processing. This can take several minutes on CPU.';
-                    if (elapsed >= 180) slowMsg.textContent = 'Still processing... The backend has not failed. SMSense is continuing to wait.';
+                    if (elapsed >= 60) slowMsg.style.display = 'block';
+                    if (elapsed >= 60) slowMsg.textContent = 'The local SMS classifier is still processing. Model speed depends on your CPU/GPU and message length.';
+                    if (elapsed >= 180) slowMsg.textContent = 'SMSense has a server-side inference deadline. If the model does not finish, a clear error will appear below instead of waiting forever.';
                 }
             }, 1000);
 
@@ -1569,7 +1569,7 @@
                 const result = await apiRequest('/api/analyze', {
                     method: 'POST',
                     body: JSON.stringify({ message, sender, timestamp })
-                }, 30 * 60 * 1000); // 30 minutes for analysis
+                }, 12 * 60 * 1000); // 12 minutes, above the default 10-minute backend classifier deadline
                 if (
                     !result ||
                     typeof result !== 'object' ||
@@ -1665,6 +1665,7 @@
                 <p style="font-size:12px; color:var(--text-muted); margin-top:12px;">Rule-based evidence score, not a calibrated probability.</p>
             </div>
 
+            ${result.storage_status && result.storage_status.available === false ? `<div class="alert" style="margin-bottom:12px;"><strong>History storage unavailable</strong><br>${escapeHtml(result.storage_status.detail || "This result could not be saved to history.")}</div>` : ""}
             ${modelAssessment.model ? `<div class="card">
                 <div class="card-title">Primary Model Assessment — ${escapeHtml(modelAssessment.model)}</div>
                 <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
