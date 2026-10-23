@@ -69,7 +69,19 @@ class AnalysisService:
         # model-provided evidence, not a calibrated probability. Keep its content
         # contribution bounded at 30/100 until our labelled benchmark justifies
         # changing the fusion weights.
-        model_assessment = await self.sms_shield.classify(message, sender)
+        try:
+            model_assessment = await asyncio.wait_for(
+                self.sms_shield.classify(message, sender),
+                timeout=settings.classifier_timeout_seconds,
+            )
+        except asyncio.TimeoutError as exc:
+            raise ModelUnavailableError(
+                "SMS-Shield classification exceeded the configured "
+                f"{settings.classifier_timeout_seconds:.0f}-second deadline. "
+                "Try a shorter message, verify the local Ollama runtime is responsive, "
+                "or increase SMSENSE_CLASSIFIER_TIMEOUT_SECONDS in .env."
+            ) from exc
+
         content_signal = float(model_assessment["risk"]) * 0.30
         model_signals = [
             ModelSignal(
@@ -86,9 +98,36 @@ class AnalysisService:
         # Optional IndicBERT remains a diagnostic challenger only. It is not
         # included in production fusion because its performance on our own
         # held-out SMS set has not yet been established.
-        challenger_signal = await self.hf.challenger_signal(message)
-        if challenger_signal is not None:
-            model_signals.append(challenger_signal)
+        if settings.indicbert_enabled:
+            try:
+                challenger_signal = await asyncio.wait_for(
+                    self.hf.challenger_signal(message),
+                    timeout=settings.challenger_timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Optional IndicBERT challenger timed out after %.1f seconds; continuing without it",
+                    settings.challenger_timeout_seconds,
+                )
+                challenger_signal = ModelSignal(
+                    "IndicBERT",
+                    False,
+                    0.0,
+                    "Optional IndicBERT challenger timed out; excluded from scoring",
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Optional IndicBERT challenger failed (%s); continuing without it",
+                    type(exc).__name__,
+                )
+                challenger_signal = ModelSignal(
+                    "IndicBERT",
+                    False,
+                    0.0,
+                    f"Optional IndicBERT challenger unavailable ({type(exc).__name__}); excluded from scoring",
+                )
+            if challenger_signal is not None:
+                model_signals.append(challenger_signal)
 
         # Similarity is supporting evidence, not a probability. The store owns
         # metric-aware distance conversion. Keep core text analysis usable if the
