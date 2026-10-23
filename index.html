@@ -963,7 +963,7 @@
                     </div>
                     <div class="flex gap-10 align-center">
                         <button class="btn" id="analyzeBtn" onclick="performAnalyze()">ANALYZE SMS →</button>
-                        <button class="clear-btn" onclick="clearAnalyzeForm()">CLEAR</button>
+                        <button class="clear-btn" id="clearAnalyzeBtn" onclick="clearAnalyzeForm()">CLEAR</button>
                     </div>
                     <div class="example-buttons">
                         <span style="font-size:13px; color:var(--text-muted);">Examples:</span>
@@ -1116,7 +1116,7 @@
                         <label class="form-label">Note (optional)</label>
                         <input type="text" id="feedbackNote" placeholder="Add your note...">
                     </div>
-                    <button class="btn" onclick="submitFeedback()">SUBMIT FEEDBACK</button>
+                    <button class="btn" id="submitFeedbackBtn" onclick="submitFeedback()" disabled>SUBMIT FEEDBACK</button>
                 </div>
                 <div id="feedbackResult"></div>
             </div>
@@ -1469,7 +1469,7 @@
                 card.classList.remove('hidden');
                 const risk = Number(currentAnalysis.risk_score || 0);
                 const label = currentAnalysis.label || 'UNKNOWN';
-                const labelClass = getRiskLabelClass(risk);
+                const labelClass = getRiskLabelClass(label);
                 content.innerHTML = `
                     <div class="flex gap-10 align-center flex-wrap">
                         <div class="risk-score-circle" style="width:80px; height:80px; border-width:2px; font-size:20px; border-color:${getRiskColor(label)};">
@@ -1517,6 +1517,26 @@
             document.getElementById('analyzeTimestamp').value = '';
             updateCharCount();
             document.getElementById('analyzeResultPlaceholder').innerHTML = '';
+
+            // Clear the selected result as well as the visible form, so other
+            // views cannot keep showing stale evidence or accept stale feedback.
+            currentAnalysis = null;
+            currentAnalysisId = null;
+            feedbackHelpful = null;
+            lastAnalysisTimestamp = null;
+            updateLastAnalysisTime();
+            updateLatestAnalysisCard();
+            renderURIIntel();
+            renderModels();
+            renderFeedbackInfo();
+            document.getElementById('feedbackResult').innerHTML = '';
+            document.getElementById('feedbackNote').value = '';
+            document.querySelectorAll('#view-feedback .btn-secondary').forEach(button => {
+                button.classList.remove('active');
+                button.style.background = '';
+                button.style.color = '';
+                button.style.borderColor = '';
+            });
         }
 
         function updateCharCount() {
@@ -1530,6 +1550,10 @@
             const timestampEl = document.getElementById('analyzeTimestamp');
             const btn = document.getElementById('analyzeBtn');
             const resultContainer = document.getElementById('analyzeResultPlaceholder');
+            const clearBtn = document.getElementById('clearAnalyzeBtn');
+
+            // Ctrl+Enter must not start another request while a model call is active.
+            if (btn.disabled) return;
 
             const message = messageEl.value.trim();
             if (!message) {
@@ -1540,6 +1564,7 @@
             const timestamp = timestampEl.value.trim() || null;
 
             btn.disabled = true;
+            if (clearBtn) clearBtn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span> AI ANALYSIS IN PROGRESS';
 
             // Loading UI with pipeline and elapsed timer
@@ -1612,6 +1637,7 @@
             } finally {
                 clearInterval(timer);
                 btn.disabled = false;
+                if (clearBtn) clearBtn.disabled = false;
                 btn.innerHTML = 'ANALYZE SMS →';
             }
         }
@@ -2072,13 +2098,20 @@
         // ==================== FEEDBACK ====================
         function renderFeedbackInfo() {
             const container = document.getElementById('feedbackAnalysisInfo');
+            const submitButton = document.getElementById('submitFeedbackBtn');
+            const hasSavedAnalysis = Number.isInteger(Number(currentAnalysisId)) && Number(currentAnalysisId) > 0;
+            if (submitButton) submitButton.disabled = !currentAnalysis || !hasSavedAnalysis;
+
             if (currentAnalysis) {
-                const labelClass = getRiskLabelClass(Number(currentAnalysis.risk_score || 0));
+                const labelClass = getRiskLabelClass(currentAnalysis.label || Number(currentAnalysis.risk_score || 0));
+                const message = hasSavedAnalysis
+                    ? ''
+                    : '<p class="text-muted" style="margin-top:8px;">This result was not saved to history, so feedback cannot be linked to an analysis ID. Resolve the history-storage problem first.</p>';
                 container.innerHTML = `<div style="background:var(--bg-input); padding:10px; border-radius:6px;">
-                    <strong>Analysis ID:</strong> ${currentAnalysisId || 'current'} &nbsp;|&nbsp;
+                    <strong>Analysis ID:</strong> ${hasSavedAnalysis ? currentAnalysisId : 'Not saved'} &nbsp;|&nbsp;
                     <strong>Score:</strong> ${currentAnalysis.risk_score} &nbsp;|&nbsp;
                     <strong>Label:</strong> <span class="badge badge-${labelClass}">${escapeHtml(currentAnalysis.label)}</span>
-                </div>`;
+                </div>${message}`;
             } else {
                 container.innerHTML = '<p class="text-muted">No analysis selected. Run an analysis first.</p>';
             }
@@ -2100,12 +2133,16 @@
 
         async function submitFeedback() {
             if (!currentAnalysis) { alert('No analysis to provide feedback on.'); return; }
+            if (!Number.isInteger(Number(currentAnalysisId)) || Number(currentAnalysisId) <= 0) {
+                document.getElementById('feedbackResult').innerHTML = '<div class="alert">Feedback requires a saved analysis ID. This result was not saved to history, so it cannot be linked to feedback.</div>';
+                return;
+            }
             if (feedbackHelpful === null) { alert('Please select whether the detection was correct or incorrect.'); return; }
             const note = document.getElementById('feedbackNote').value.trim();
             try {
                 const response = await apiRequest('/api/feedback', {
                     method: 'POST',
-                    body: JSON.stringify({ analysis_id: currentAnalysisId || null, helpful: feedbackHelpful, note: note || null })
+                    body: JSON.stringify({ analysis_id: Number(currentAnalysisId), helpful: feedbackHelpful, note: note || null })
                 }, 30000);
                 document.getElementById('feedbackResult').innerHTML = '<div class="alert alert-info">Feedback submitted successfully.</div>';
                 // Reset
