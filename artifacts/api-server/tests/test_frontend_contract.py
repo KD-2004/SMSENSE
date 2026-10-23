@@ -92,3 +92,96 @@ def test_frontend_feedback_requires_a_saved_analysis_id():
     assert "Number.isInteger(Number(currentAnalysisId))" in source
     assert "Feedback requires a saved analysis ID" in source
     assert "analysis_id: Number(currentAnalysisId)" in source
+
+
+
+def test_frontend_renders_a_realistic_backend_result_instead_of_only_parsing_it():
+    node = shutil.which("node")
+    if node is None:
+        import pytest
+        pytest.skip("Node.js is unavailable; frontend rendering smoke test skipped")
+
+    source = FRONTEND.read_text(encoding="utf-8")
+    scripts = re.findall(r"<script\\b[^>]*>(.*?)</script>", source, flags=re.DOTALL | re.IGNORECASE)
+    frontend_script = next((part for part in scripts if "function renderAnalysisResult" in part), None)
+    assert frontend_script, "Expected the frontend result-rendering function"
+
+    harness = r"""
+const fs = require("node:fs");
+const vm = require("node:vm");
+const script = fs.readFileSync(process.argv[2], "utf8");
+const fakeDocument = {
+  addEventListener() {},
+  createElement() {
+    let safeHtml = "";
+    return {
+      set textContent(value) {
+        safeHtml = String(value).replace(/[&<>"']/g, ch => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        })[ch]);
+      },
+      get innerHTML() { return safeHtml; }
+    };
+  }
+};
+const sandbox = {
+  window: { SMSENSE_API_BASE: "", location: { hostname: "localhost" } },
+  document: fakeDocument,
+  console,
+  Headers,
+  AbortController,
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval,
+  fetch: async () => { throw new Error("fetch must not run during rendering smoke test"); }
+};
+vm.createContext(sandbox);
+vm.runInContext(script, sandbox, { timeout: 5000 });
+const container = { innerHTML: "" };
+sandbox.renderAnalysisResult({
+  id: 123,
+  risk_score: 87,
+  label: "CRITICAL",
+  category: "KYC_FRAUD",
+  language: "Hinglish",
+  raw_message: "Your account will be blocked; send your PIN.",
+  normalized_message: "your account will be blocked; send your pin.",
+  sender: "VM-SBIHELP",
+  model_assessment: {
+    model: "SMS-Shield", risk: 91, verdict: "dangerous",
+    explanation: "Requests sensitive credentials.",
+    red_flags: ["PIN request"], segments_analyzed: 1
+  },
+  decision_diagnostics: {},
+  evidence: { content: 27, sender: 4, url: 8, behavior: 18, obfuscation: 6, similarity: 0 },
+  suspicious_phrases: ["KYC plus account threat"],
+  url_analysis: { count: 0, urls: [] },
+  obfuscation: {},
+  explanation: { top_contributing_evidence: ["content"], model_signals: [
+    { name: "SMS-Shield", available: true, score: 13.65, detail: "risk=91/100" }
+  ] },
+  post_hoc: null
+}, container);
+for (const expected of [
+  "Analysis Result", "Primary Model Assessment — SMS-Shield",
+  "Model risk score: 91 / 100", "KYC_FRAUD",
+  "Your account will be blocked; send your PIN.", "KYC plus account threat"
+]) {
+  if (!container.innerHTML.includes(expected)) {
+    throw new Error("Rendered analysis is missing expected content: " + expected);
+  }
+}
+"""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        script_path = Path(temp_dir) / "frontend.js"
+        harness_path = Path(temp_dir) / "render-smoke.js"
+        script_path.write_text(frontend_script, encoding="utf-8")
+        harness_path.write_text(harness, encoding="utf-8")
+        checked = subprocess.run(
+            [node, str(harness_path), str(script_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert checked.returncode == 0, checked.stderr
