@@ -192,3 +192,12 @@ def test_history_detail_requests_missing_optional_explanation():
     source = FRONTEND.read_text(encoding="utf-8")
     assert "function loadHistoryDetail(id)" in source
     assert "if (!analysis.post_hoc?.summary) loadPostHocExplanation(analysis);" in source
+
+
+
+def test_frontend_does_not_mislabel_missing_hosted_configuration_as_local_backend_outage():
+    source = FRONTEND.read_text(encoding="utf-8")
+    assert 'const isFileProtocol = window.location.protocol === "file:";' in source
+    assert "if (API_CONFIG_ERROR)" in source
+    assert "escapeHtml(API_CONFIG_ERROR)" in source
+    assert "serve the project folder at http://127.0.0.1:5500" in source
