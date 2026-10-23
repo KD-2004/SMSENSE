@@ -55,7 +55,10 @@ def test_healthz_is_lightweight_and_reachable():
 
 
 def test_analyze_endpoint_preserves_schema_fields(monkeypatch):
+    post_hoc_flags = []
+
     async def fake_analyze(message, sender, timestamp, post_hoc):
+        post_hoc_flags.append(post_hoc)
         return _analysis_result(message, sender)
 
     monkeypatch.setattr(api.service, "analyze", fake_analyze)
@@ -80,6 +83,103 @@ def test_analyze_endpoint_preserves_schema_fields(monkeypatch):
     assert body["sender"] == "PERSONAL"
     assert body["similarity"]["available"] is False
     assert body["explanation_status"]["requested"] is False
+    # Core scoring returns without waiting for the optional explanation model.
+    assert post_hoc_flags == [False]
+
+
+def test_analysis_result_is_returned_when_history_storage_fails(monkeypatch):
+    async def fake_analyze(message, sender, timestamp, post_hoc):
+        assert post_hoc is False
+        return _analysis_result(message, sender)
+
+    def fail_save(_result):
+        raise OSError("test database is read-only")
+
+    monkeypatch.setattr(api.service, "analyze", fake_analyze)
+    monkeypatch.setattr(api.storage, "save_analysis", fail_save)
+
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app),
+            base_url="http://testserver",
+        ) as client:
+            return await client.post(
+                "/api/analyze",
+                json={"message": "Your appointment is confirmed."},
+            )
+
+    response = asyncio.run(request())
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["risk_score"] == 12
+    assert body["label"] == "LOW"
+    assert body["id"] is None
+    assert body["storage_status"]["available"] is False
+    assert "will not appear in history" in body["storage_status"]["detail"]
+
+
+def test_explain_endpoint_returns_optional_model_result(monkeypatch):
+    async def fake_explain(payload):
+        assert payload["final_score"] == 82
+        assert payload["final_label"] == "CRITICAL"
+        return {
+            "summary": "The message threatens account closure and requests credentials.",
+            "suspicious_phrases": ["account will be blocked"],
+            "recommended_action": "Verify with the official bank app.",
+        }
+
+    monkeypatch.setattr(api.service.ollama, "explain", fake_explain)
+
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app),
+            base_url="http://testserver",
+        ) as client:
+            return await client.post("/api/explain", json={
+                "risk_score": 82,
+                "label": "CRITICAL",
+                "category": "KYC_FRAUD",
+                "raw_message": "Your account will be blocked. Send your PIN.",
+                "normalized_message": "your account will be blocked. send your pin.",
+                "top_evidence": ["content", "behavior"],
+                "suspicious_phrases": ["account will be blocked"],
+            })
+
+    response = asyncio.run(request())
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["available"] is True
+    assert body["summary"].startswith("The message threatens")
+    assert body["recommended_action"] == "Verify with the official bank app."
+
+
+def test_explain_endpoint_falls_back_without_breaking_primary_result(monkeypatch):
+    async def unavailable(_payload):
+        raise RuntimeError("optional Qwen model is not installed")
+
+    monkeypatch.setattr(api.service.ollama, "explain", unavailable)
+
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app),
+            base_url="http://testserver",
+        ) as client:
+            return await client.post("/api/explain", json={
+                "risk_score": 74,
+                "label": "HIGH RISK",
+                "category": "URL_REVIEW",
+                "raw_message": "Open this link to verify your account.",
+                "normalized_message": "open this link to verify your account.",
+                "top_evidence": ["content"],
+                "suspicious_phrases": [],
+            })
+
+    response = asyncio.run(request())
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["available"] is False
+    assert "primary detection pipeline" in body["summary"]
+    assert body["recommended_action"]
 
 
 def test_analyze_endpoint_rejects_whitespace_only_message():

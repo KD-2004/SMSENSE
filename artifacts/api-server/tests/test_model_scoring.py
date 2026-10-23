@@ -96,6 +96,63 @@ def test_sms_shield_accepts_json_wrapped_after_a_short_preamble():
     assert result["verdict"] == "suspicious"
 
 
+def test_sms_shield_disables_thinking_and_retries_empty_json_content(monkeypatch):
+    requests = []
+
+    class FakeResponse:
+        is_success = True
+        status_code = 200
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json):
+            requests.append((url, json))
+            if len(requests) == 1:
+                return FakeResponse({
+                    "message": {
+                        "content": "",
+                        "thinking": "The message says to verify account details.",
+                    }
+                })
+            return FakeResponse({
+                "message": {
+                    "content": __import__("json").dumps({
+                        "verdict": "dangerous",
+                        "category": "phishing",
+                        "scam_type": "credential_theft",
+                        "risk": 86,
+                        "red_flags": ["account threat", "credential request"],
+                        "explanation": "The message asks for sensitive account details.",
+                    })
+                }
+            })
+
+    monkeypatch.setattr("app.models.httpx.AsyncClient", lambda timeout: FakeClient())
+    result = asyncio.run(SmsShieldClient()._classify_segment(
+        "Your account will be blocked. Submit your credentials.",
+        "BANKALERT",
+    ))
+
+    assert len(requests) == 2
+    assert requests[0][1]["think"] is False
+    assert requests[0][1]["format"] == "json"
+    assert requests[1][1]["think"] is False
+    assert "format" not in requests[1][1]
+    assert result["risk"] == 86
+    assert result["verdict"] == "dangerous"
+
+
 def test_long_message_is_split_into_overlapping_segments_with_full_coverage():
     message = "A" * 1300
     segments = SmsShieldClient._segments(message)
@@ -175,6 +232,28 @@ def test_optional_indicbert_is_diagnostic_only(monkeypatch):
     assert "[URL]" in captured["text"]
     assert "[PHONE]" in captured["text"]
     assert "excluded from fused scoring" in signal.detail
+
+
+def test_indicbert_health_does_not_trigger_model_download(monkeypatch):
+    from dataclasses import replace
+    import app.models as models
+
+    monkeypatch.setattr(
+        models,
+        "settings",
+        replace(models.settings, indicbert_enabled=True),
+    )
+    detector = HuggingFaceModels()
+    monkeypatch.setattr(detector, "package_status", lambda: (True, "test packages present"))
+
+    def must_not_load(*args, **kwargs):
+        raise AssertionError("health checks must not download or load model weights")
+
+    monkeypatch.setattr(detector, "_load", must_not_load)
+    status = asyncio.run(detector.detailed_status())
+
+    assert status["indicbert"][0] is False
+    assert "Health checks do not download model weights" in status["indicbert"][1]
 
 
 def test_ollama_explainer_disables_thinking_and_retries_without_json_mode(monkeypatch):

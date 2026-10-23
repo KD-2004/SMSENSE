@@ -363,49 +363,124 @@ class SmsShieldClient:
             "verdict (safe, suspicious, dangerous), category, scam_type (string or null), "
             "risk (integer 0-100), red_flags (array of strings), explanation (string). "
             "Use risk bands: 0-39 safe, 40-69 suspicious, 70-100 dangerous. "
-            "Keep explanation short and avoid claims not supported by the SMS."
+            "Keep explanation short and avoid claims not supported by the SMS. "
+            "Output JSON only; do not return reasoning or Markdown."
         )
         user_data = {
             "sender": sender or "unknown / not supplied",
             "message": message,
         }
+        request_base = {
+            "model": self.model_name,
+            "stream": False,
+            # SMS-Shield is Qwen3-derived. Without think=False, some Ollama builds
+            # return reasoning but leave message.content empty in structured mode.
+            "think": False,
+            "options": {
+                "temperature": 0,
+                "num_predict": 384,
+            },
+            "messages": [
+                {"role": "system", "content": system},
+                {
+                    "role": "user",
+                    "content": json.dumps(user_data, ensure_ascii=False),
+                },
+            ],
+        }
+
+        last_error: ModelUnavailableError | None = None
         try:
             async with httpx.AsyncClient(timeout=300) as client:
-                response = await client.post(
-                    f"{self.base_url}/api/chat",
-                    json={
-                        "model": self.model_name,
-                        "stream": False,
-                        "format": "json",
-                        "options": {
-                            "temperature": 0,
-                            "num_predict": 256,
-                        },
-                        "messages": [
-                            {"role": "system", "content": system},
-                            {
-                                "role": "user",
-                                "content": json.dumps(user_data, ensure_ascii=False),
-                            },
-                        ],
-                    },
-                )
+                # Ollama documents JSON mode, but some Qwen3-derived model builds
+                # can return an empty or unusable content field with format=json.
+                # Retry once without the format constraint while keeping thinking
+                # disabled. Never infer a score from reasoning text or a default.
+                for attempt in range(2):
+                    request_body = dict(request_base)
+                    if attempt == 0:
+                        request_body["format"] = "json"
+
+                    response = await client.post(
+                        f"{self.base_url}/api/chat",
+                        json=request_body,
+                    )
+
+                    if not response.is_success:
+                        error = ModelUnavailableError(
+                            f"SMS-Shield inference failed (HTTP {response.status_code})"
+                        )
+                        if attempt == 0 and response.status_code in {400, 422}:
+                            last_error = error
+                            logger.warning(
+                                "SMS-Shield JSON-mode request was rejected; retrying without format=json"
+                            )
+                            continue
+                        raise error
+
+                    try:
+                        envelope = response.json()
+                    except (ValueError, TypeError) as exc:
+                        last_error = ModelUnavailableError(
+                            "Ollama returned an invalid SMS-Shield response envelope"
+                        )
+                        if attempt == 0:
+                            logger.warning(
+                                "SMS-Shield response was not JSON; retrying without format=json"
+                            )
+                            continue
+                        raise last_error from exc
+
+                    message_result = (
+                        envelope.get("message")
+                        if isinstance(envelope, dict)
+                        else None
+                    )
+                    model_content = (
+                        message_result.get("content", "")
+                        if isinstance(message_result, dict)
+                        else ""
+                    )
+                    if not isinstance(model_content, str) or not model_content.strip():
+                        last_error = ModelUnavailableError(
+                            "SMS-Shield returned empty final content"
+                        )
+                        if attempt == 0:
+                            logger.warning(
+                                "SMS-Shield returned empty content in JSON mode; retrying without format=json"
+                            )
+                            continue
+                        raise ModelUnavailableError(
+                            "SMS-Shield returned empty output after retry. "
+                            "Run 'ollama run " + self.model_name + "' and inspect the backend log."
+                        ) from last_error
+
+                    try:
+                        return self._parse_result(model_content)
+                    except ModelUnavailableError as exc:
+                        last_error = exc
+                        if attempt == 0:
+                            logger.warning(
+                                "SMS-Shield JSON-mode content did not satisfy the response contract; retrying without format=json (%s)",
+                                exc,
+                            )
+                            continue
+                        raise ModelUnavailableError(
+                            "SMS-Shield returned unusable structured output after retry: "
+                            + str(exc)
+                        ) from exc
+
+        except ModelUnavailableError:
+            raise
         except Exception as exc:
             raise ModelUnavailableError(
                 f"SMS-Shield inference request failed: {type(exc).__name__}"
             ) from exc
-        if not response.is_success:
-            raise ModelUnavailableError(
-                f"SMS-Shield model unavailable (HTTP {response.status_code}). "
-                f"Install it with: ollama run {self.model_name}"
-            )
-        try:
-            content = response.json().get("message", {}).get("content", "")
-        except (ValueError, AttributeError) as exc:
-            raise ModelUnavailableError("Ollama returned an invalid SMS-Shield response") from exc
-        if not isinstance(content, str) or not content.strip():
-            raise ModelUnavailableError("SMS-Shield returned empty output")
-        return self._parse_result(content)
+
+        raise ModelUnavailableError(
+            "SMS-Shield did not return a usable result: "
+            + str(last_error or "unknown response error")
+        )
 
     async def classify(self, message: str, sender: str | None) -> dict[str, Any]:
         if not message or not message.strip():
@@ -454,6 +529,7 @@ class HuggingFaceModels:
             )
 
     async def detailed_status(self) -> dict[str, tuple[bool, str]]:
+        """Inspect challenger readiness without downloading weights on a health request."""
         if not settings.indicbert_enabled:
             return {
                 "indicbert": (
@@ -465,14 +541,22 @@ class HuggingFaceModels:
         if not package_ok:
             return {"indicbert": (False, package_detail)}
 
-        def load_model() -> tuple[bool, str]:
-            try:
-                self._load("indicbert", settings.indicbert_model)
-                return True, f"{settings.indicbert_model} loaded successfully (diagnostic only)"
-            except ModelUnavailableError as exc:
-                return False, str(exc)
+        if "indicbert" in self._pipelines:
+            return {
+                "indicbert": (
+                    True,
+                    f"{settings.indicbert_model} is already loaded (diagnostic only)",
+                )
+            }
 
-        return {"indicbert": await asyncio.to_thread(load_model)}
+        return {
+            "indicbert": (
+                False,
+                f"{settings.indicbert_model} is enabled but not loaded yet. "
+                "Health checks do not download model weights; the optional "
+                "challenger loads only when explicitly used for analysis/benchmarking.",
+            )
+        }
 
     def _load(self, name: str, model_id: str) -> Any:
         if name not in self._pipelines:

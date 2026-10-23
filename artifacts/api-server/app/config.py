@@ -12,11 +12,22 @@ if load_dotenv is not None:
     load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
 
 
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _resolve_setting_path(name: str, default: str) -> str:
+    """Anchor relative file paths to the backend, not the caller's working directory."""
+    value = Path(os.getenv(name, default)).expanduser()
+    if not value.is_absolute():
+        value = BACKEND_ROOT / value
+    return str(value.resolve())
+
+
 @dataclass(frozen=True)
 class Settings:
     port: int = int(os.getenv("PORT", "4444"))
-    database_path: str = os.getenv("DATABASE_PATH", "./data/smsense.sqlite3")
-    faiss_index_path: str = os.getenv("FAISS_INDEX_PATH", "./data/scam_examples.index")
+    database_path: str = _resolve_setting_path("DATABASE_PATH", "./data/smsense.sqlite3")
+    faiss_index_path: str = _resolve_setting_path("FAISS_INDEX_PATH", "./data/scam_examples.index")
     ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
     ollama_chat_model: str = os.getenv("OLLAMA_CHAT_MODEL", "qwen3:8b")
     ollama_embedding_model: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "qwen3-embedding:0.6b")
@@ -42,6 +53,19 @@ class Settings:
     low_threshold: int = int(os.getenv("RISK_LOW_THRESHOLD", "25"))
     suspicious_threshold: int = int(os.getenv("RISK_SUSPICIOUS_THRESHOLD", "50"))
     high_risk_threshold: int = int(os.getenv("RISK_HIGH_RISK_THRESHOLD", "75"))
+    # Optional enrichment must not keep the primary model result waiting for minutes.
+    similarity_timeout_seconds: float = max(
+        0.1, float(os.getenv("SMSENSE_SIMILARITY_TIMEOUT_SECONDS", "3.0"))
+    )
+    url_reputation_timeout_seconds: float = max(
+        0.1, float(os.getenv("SMSENSE_URL_REPUTATION_TIMEOUT_SECONDS", "4.0"))
+    )
+    classifier_timeout_seconds: float = max(
+        1.0, float(os.getenv("SMSENSE_CLASSIFIER_TIMEOUT_SECONDS", "600.0"))
+    )
+    challenger_timeout_seconds: float = max(
+        0.1, float(os.getenv("SMSENSE_CHALLENGER_TIMEOUT_SECONDS", "2.0"))
+    )
 
 
 settings = Settings()
