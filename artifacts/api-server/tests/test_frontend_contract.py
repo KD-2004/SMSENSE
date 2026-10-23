@@ -201,3 +201,20 @@ def test_frontend_does_not_mislabel_missing_hosted_configuration_as_local_backen
     assert "if (API_CONFIG_ERROR)" in source
     assert "escapeHtml(API_CONFIG_ERROR)" in source
     assert "Serve the project folder at http://127.0.0.1:5500" in source
+
+
+
+def test_frontend_feedback_choices_and_submit_wait_for_saved_analysis_and_selection():
+    source = FRONTEND.read_text(encoding="utf-8")
+    assert 'id="btnCorrect" onclick="setFeedback(true, this)" disabled' in source
+    assert 'id="btnIncorrect" onclick="setFeedback(false, this)" disabled' in source
+    feedback_fn = re.search(
+        r"function renderFeedbackInfo\(\)\s*\{(.*?)\n\s*\}",
+        source,
+        flags=re.DOTALL,
+    )
+    assert feedback_fn
+    assert "choicesEnabled" in feedback_fn.group(1)
+    assert "feedbackHelpful === null" in feedback_fn.group(1)
+    assert "correctButton.disabled = !choicesEnabled" in feedback_fn.group(1)
+    assert "incorrectButton.disabled = !choicesEnabled" in feedback_fn.group(1)
