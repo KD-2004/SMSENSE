@@ -60,6 +60,33 @@ class AnalysisResponse(BaseModel):
     created_at: datetime | None = None
 
 
+class ExplainRequest(BaseModel):
+    """Bounded input for an optional explanation generated after risk analysis."""
+
+    risk_score: int = Field(ge=0, le=100)
+    label: Label
+    category: str = Field(min_length=1, max_length=120)
+    top_evidence: list[str] = Field(default_factory=list, max_length=12)
+    raw_message: str = Field(min_length=1, max_length=10_000)
+    normalized_message: str = Field(default="", max_length=10_000)
+    suspicious_phrases: list[str] = Field(default_factory=list, max_length=40)
+
+    @field_validator("raw_message")
+    @classmethod
+    def reject_blank_explanation_messages(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("raw_message must contain non-whitespace text")
+        return value
+
+
+class ExplanationResponse(BaseModel):
+    summary: str
+    suspicious_phrases: list[str]
+    recommended_action: str
+    available: bool
+    detail: str
+
+
 class FeedbackRequest(BaseModel):
     analysis_id: int
     helpful: bool
