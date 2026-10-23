@@ -186,12 +186,30 @@ class AnalysisService:
                 ),
             }
 
+        # The bundled FAISS index is only a tiny demo set. Keep its nearest-
+        # neighbour signal visible for diagnostics but out of risk scoring until
+        # a group-split labelled evaluation demonstrates reliable incremental value.
+        similarity_result["scoring_enabled"] = settings.similarity_scoring_enabled
+        similarity_fusion_signal = (
+            similarity_signal if settings.similarity_scoring_enabled else 0.0
+        )
+        if not settings.similarity_scoring_enabled:
+            detail = str(similarity_result.get("detail", "")).strip()
+            explanation = (
+                "Semantic similarity is diagnostic-only and excluded from the "
+                "risk score until it is validated on an independently labelled SMS set."
+            )
+            similarity_result["detail"] = f"{detail} {explanation}".strip()
+        similarity_result["score_contribution"] = (
+            similarity_fusion_signal if settings.similarity_scoring_enabled else 0.0
+        )
+
         result = fuse(
             parsed=parsed,
             normalized=normalized,
             behavior=behavior,
             content_signal=content_signal,
-            similarity_signal=similarity_signal,
+            similarity_signal=similarity_fusion_signal,
             url_analysis=url_analysis,
         )
         model_risk = int(model_assessment.get("risk", 0) or 0)
