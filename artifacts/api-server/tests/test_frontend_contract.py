@@ -67,3 +67,28 @@ def test_frontend_explains_similarity_is_diagnostic_only_when_disabled():
 def test_frontend_does_not_send_ngrok_browser_warning_header():
     source = FRONTEND.read_text(encoding="utf-8")
     assert "ngrok-skip-browser-warning" not in source
+
+
+
+def test_frontend_prevents_overlapping_analysis_and_resets_cleared_selection():
+    source = FRONTEND.read_text(encoding="utf-8")
+    assert "if (btn.disabled) return;" in source
+    assert 'id="clearAnalyzeBtn"' in source
+    assert "if (clearBtn) clearBtn.disabled = true;" in source
+    clear_fn = re.search(
+        r"function clearAnalyzeForm\(\)\s*\{(.*?)\n\s*\}",
+        source,
+        flags=re.DOTALL,
+    )
+    assert clear_fn, "Expected a clearAnalyzeForm implementation"
+    assert "currentAnalysis = null;" in clear_fn.group(1)
+    assert "currentAnalysisId = null;" in clear_fn.group(1)
+    assert "renderModels();" in clear_fn.group(1)
+
+
+def test_frontend_feedback_requires_a_saved_analysis_id():
+    source = FRONTEND.read_text(encoding="utf-8")
+    assert 'id="submitFeedbackBtn"' in source
+    assert "Number.isInteger(Number(currentAnalysisId))" in source
+    assert "Feedback requires a saved analysis ID" in source
+    assert "analysis_id: Number(currentAnalysisId)" in source
