@@ -41,7 +41,7 @@ CORS_ALLOWED_ORIGINS=http://127.0.0.1:5500,http://localhost:5500
 
 Only URL strings are sent to the provider, not the SMS body or sender. URLs can themselves contain tracking identifiers or sensitive query parameters, so enable this feature only when that disclosure is acceptable. The checker does not follow redirects or visit the destination. A reputation result of `malicious` adds bounded URL evidence; `no_match` means only that the provider returned no threat-list match at the time of lookup, not that the URL is guaranteed safe. Missing keys, provider errors and rate/limit conditions remain `not_checked` and do not fail the primary analysis.
 
-The client checks at most 10 unique URLs per message, limits concurrent requests, caches successful answers for one hour, and uses a five-second per-request timeout. This optional enrichment does not replace safe browsing behavior or independently verified evaluation. The overall URL enrichment step is bounded by `SMSENSE_URL_REPUTATION_TIMEOUT_SECONDS` (4 seconds by default).
+The client checks at most 10 unique URLs per message, limits concurrent requests, caches successful answers for one hour, and uses a five-second per-request timeout. This optional enrichment does not replace safe browsing behavior or independently verified evaluation. The overall URL enrichment step is bounded by `SMSENSE_URL_REPUTATION_TIMEOUT_SECONDS` (4 seconds by default). The primary classifier has a 600-second overall deadline by default (`SMSENSE_CLASSIFIER_TIMEOUT_SECONDS`); raise it in `.env` for slow hardware or long pasted messages. Optional IndicBERT is bounded by `SMSENSE_CHALLENGER_TIMEOUT_SECONDS` (2 seconds) and remains diagnostic-only.
 
 ## API endpoints
 
