@@ -1465,6 +1465,7 @@
         function updateLatestAnalysisCard() {
             const card = document.getElementById('latestAnalysisCard');
             const content = document.getElementById('latestAnalysisContent');
+            if (!card || !content) return;
             if (currentAnalysis) {
                 card.classList.remove('hidden');
                 const risk = Number(currentAnalysis.risk_score || 0);
@@ -1992,7 +1993,7 @@
             }
             let html = '<table><thead><tr><th>ID</th><th>Time</th><th>Message</th><th>Score</th><th>Label</th><th>Category</th><th>Language</th><th>Sender</th></tr></thead><tbody>';
             items.forEach(item => {
-                const labelClass = getRiskLabelClass(Number(item.risk_score || 0));
+                const labelClass = getRiskLabelClass(item.label || Number(item.risk_score || 0));
                 html += `<tr style="cursor:pointer;" onclick="loadHistoryDetail(${item.id})">
                     <td>${item.id}</td>
                     <td>${formatDate(item.created_at)}</td>
