@@ -191,7 +191,7 @@ for (const expected of [
 def test_history_detail_requests_missing_optional_explanation():
     source = FRONTEND.read_text(encoding="utf-8")
     assert "function loadHistoryDetail(id)" in source
-    assert "if (!analysis.post_hoc?.summary) loadPostHocExplanation(analysis);" in source
+    assert "if (!analysis.post_hoc?.summary) loadPostHocExplanation(analysis, detailContainer);" in source
 
 
 
