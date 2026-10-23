@@ -1129,12 +1129,15 @@
         // Example: window.SMSENSE_API_BASE = "http://127.0.0.1:4444"
         const configuredApiBase = String(window.SMSENSE_API_BASE ?? "").trim();
         const isHostedGitHubPages = /\.github\.io$/i.test(window.location.hostname);
+        const isFileProtocol = window.location.protocol === "file:";
         const API_BASE = String(
             configuredApiBase || (isHostedGitHubPages ? "" : "http://127.0.0.1:4444")
         ).replace(/\/+$/, "");
         const API_CONFIG_ERROR = isHostedGitHubPages && !configuredApiBase
             ? "The hosted GitHub Pages frontend cannot reach Ollama on your computer through localhost. Run the frontend locally at http://127.0.0.1:5500, or configure SMSENSE_API_BASE to a deployed HTTPS backend and allow this site's origin in CORS_ALLOWED_ORIGINS."
-            : "";
+            : isFileProtocol
+                ? "The frontend was opened directly from a file. Serve the project folder at http://127.0.0.1:5500, then open that address so browser requests can use the configured local API."
+                : "";
 
         // ==================== STATE ====================
         let currentAnalysis = null;
@@ -2190,11 +2193,22 @@
                 loadDashboard();
                 loadHealth();
             } else {
-                document.getElementById('view-dashboard').innerHTML = `
-                    <div class="alert">
-                        <strong>SMSense backend is offline.</strong><br>
-                        Start the FastAPI server at <code>http://127.0.0.1:4444</code>, then reload this page.
-                    </div>`;
+                const dashboard = document.getElementById('view-dashboard');
+                if (!dashboard) return;
+                if (API_CONFIG_ERROR) {
+                    dashboard.innerHTML = `
+                        <div class="alert">
+                            <strong>Frontend configuration required.</strong><br><br>
+                            ${escapeHtml(API_CONFIG_ERROR)}
+                        </div>`;
+                } else {
+                    dashboard.innerHTML = `
+                        <div class="alert">
+                            <strong>SMSense backend is offline.</strong><br><br>
+                            Start the FastAPI server at <code>http://127.0.0.1:4444</code>, verify it at
+                            <code>http://127.0.0.1:4444/api/healthz</code>, then reload this page.
+                        </div>`;
+                }
             }
         }
     </script>
