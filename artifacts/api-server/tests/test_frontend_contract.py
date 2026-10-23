@@ -218,3 +218,19 @@ def test_frontend_feedback_choices_and_submit_wait_for_saved_analysis_and_select
     assert "feedbackHelpful === null" in feedback_fn.group(1)
     assert "correctButton.disabled = !choicesEnabled" in feedback_fn.group(1)
     assert "incorrectButton.disabled = !choicesEnabled" in feedback_fn.group(1)
+
+
+
+def test_frontend_resets_previous_result_before_new_analysis_or_history_selection():
+    source = FRONTEND.read_text(encoding="utf-8")
+    assert "function clearSelectedAnalysisContext()" in source
+
+    analyze_start = source.index("async function performAnalyze()")
+    analyze_end = source.index("function retryAnalysis()", analyze_start)
+    analyze_source = source[analyze_start:analyze_end]
+    assert analyze_source.index("clearSelectedAnalysisContext();") < analyze_source.index("apiRequest('/api/analyze'")
+
+    history_start = source.index("async function loadHistoryDetail(id)")
+    history_end = source.index("// ==================== URL INTEL VIEW", history_start)
+    history_source = source[history_start:history_end]
+    assert history_source.index("clearSelectedAnalysisContext();") < history_source.index("currentAnalysis = analysis;")
