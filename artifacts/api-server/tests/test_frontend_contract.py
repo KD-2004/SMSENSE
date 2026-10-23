@@ -58,6 +58,12 @@ def test_inline_frontend_javascript_has_valid_syntax():
             assert checked.returncode == 0, checked.stderr
 
 
+def test_frontend_explains_similarity_is_diagnostic_only_when_disabled():
+    source = FRONTEND.read_text(encoding="utf-8")
+    assert "result.similarity?.scoring_enabled === false" in source
+    assert "excluded from this risk score until it is validated" in source
+
+
 def test_frontend_does_not_send_ngrok_browser_warning_header():
     source = FRONTEND.read_text(encoding="utf-8")
     assert "ngrok-skip-browser-warning" not in source

@@ -242,12 +242,16 @@ def _obfuscation_risk(
     if normalized.transliteration:
         score += 0.5
 
-    # Known spelling/obfuscation changes.
-    if normalized.misspellings:
+    # Treat the primary mutation indicators as alternative descriptions of
+    # a text change, not automatically independent evidence. A token corrected
+    # by a known mapping can set both spelling_corrected and leetspeak; counting
+    # both used to award 7 points for the same mutation.
+    if normalized.spelling_corrected:
         score += 4.0
-
-    if normalized.leetspeak:
+    elif normalized.leetspeak:
         score += 3.0
+    elif getattr(normalized, "repeated_chars", False):
+        score += 1.0
 
     if normalized.punctuation_manipulation:
         score += 1.0
@@ -255,14 +259,8 @@ def _obfuscation_risk(
     if normalized.spacing_manipulation:
         score += 1.0
 
-    # Newer normalizer fields, when available.
-    if getattr(
-        normalized,
-        "repeated_chars",
-        False,
-    ):
-        score += 1.0
-
+    # Newer normalizer fields, when available. Repeated characters are
+    # already accounted for above when no stronger mutation flag applies.
     if getattr(
         normalized,
         "concatenated_split",

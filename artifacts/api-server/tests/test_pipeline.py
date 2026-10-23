@@ -65,7 +65,9 @@ def test_normalizer_preserves_url_case_and_does_not_decode_url_path_as_leetspeak
     result = normalize_message(raw)
 
     assert result.normalized == "please update your account at https://Bank.example/ODFroNwq3J"
-    assert result.leetspeak is True
+    # "upd8" is a known abbreviation correction, not a character-by-character leet substitution.
+    assert result.spelling_corrected is True
+    assert result.leetspeak is False
     assert "odfronwq3j -> odfronwqej" not in result.misspellings
 
 
@@ -76,6 +78,91 @@ def test_normalizer_does_not_flag_only_a_numeric_url_path_as_leetspeak():
     assert result.normalized == "home loan offer expires soon. bnkbzr.co/ODFroNwq3J"
     assert result.leetspeak is False
     assert result.misspellings == []
+
+
+def test_obfuscation_score_does_not_double_count_one_mutation():
+    from app.fusion import _obfuscation_risk
+
+    known_abbreviation = normalize_message("blck")
+    actual_leetspeak = normalize_message("acc0unt")
+    repeated_characters = normalize_message("verifyyyyy")
+
+    assert known_abbreviation.spelling_corrected is True
+    assert known_abbreviation.leetspeak is False
+    assert _obfuscation_risk(known_abbreviation) == 4.0
+
+    # acc0unt is both a known correction and a leet substitution, but one
+    # token mutation must not automatically add both the 4- and 3-point weights.
+    assert actual_leetspeak.spelling_corrected is True
+    assert actual_leetspeak.leetspeak is True
+    assert _obfuscation_risk(actual_leetspeak) == 4.0
+    assert repeated_characters.repeated_chars is True
+    assert _obfuscation_risk(repeated_characters) == 1.0
+
+
+def test_suspicious_similarity_is_diagnostic_only_by_default(monkeypatch):
+    import asyncio
+    from dataclasses import replace
+
+    import app.service as service_module
+    from app.service import AnalysisService
+
+    monkeypatch.setattr(
+        service_module,
+        "settings",
+        replace(
+            service_module.settings,
+            similarity_scoring_enabled=False,
+            similarity_timeout_seconds=0.1,
+            url_reputation_timeout_seconds=0.1,
+        ),
+    )
+    service = AnalysisService()
+
+    async def fake_classify(message, sender):
+        return {
+            "model": "SMS-Shield",
+            "model_id": "test-model",
+            "risk": 70,
+            "verdict": "dangerous",
+            "model_verdict": "dangerous",
+            "verdict_supported": True,
+            "verdict_consistent": True,
+            "category": "phishing",
+            "scam_type": "phishing",
+            "red_flags": ["credential request"],
+            "explanation": "Credential request.",
+            "segments_analyzed": 1,
+            "aggregation": "single_message",
+            "segment_risks": [70],
+        }
+
+    async def no_url_lookup(urls):
+        return []
+
+    async def fake_similarity(raw, normalized, ollama):
+        return {
+            "available": True,
+            "matches": [{"id": 1, "distance": 0.01}],
+            "top_distance": 0.01,
+            "similarity_signal": 5.0,
+            "detail": "Strong nearest-neighbour match in demo index.",
+        }
+
+    monkeypatch.setattr(service.sms_shield, "classify", fake_classify)
+    monkeypatch.setattr(service.url_reputation, "check_urls", no_url_lookup)
+    monkeypatch.setattr(service.similarity, "search", fake_similarity)
+
+    result = asyncio.run(
+        service.analyze("Please verify your account.", None, post_hoc=False)
+    )
+
+    assert result["similarity"]["available"] is True
+    assert result["similarity"]["similarity_signal"] == 5.0
+    assert result["similarity"]["scoring_enabled"] is False
+    assert result["similarity"]["score_contribution"] == 0.0
+    assert "diagnostic-only" in result["similarity"]["detail"]
+    assert result["evidence"]["similarity"] == 0.0
 
 
 def test_combination_rule_is_stronger_than_single_keyword():

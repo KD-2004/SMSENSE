@@ -66,6 +66,10 @@ class Settings:
     challenger_timeout_seconds: float = max(
         0.1, float(os.getenv("SMSENSE_CHALLENGER_TIMEOUT_SECONDS", "2.0"))
     )
+    # Keep the three-example demo FAISS index diagnostic-only until a labelled benchmark validates it.
+    similarity_scoring_enabled: bool = os.getenv(
+        "SIMILARITY_SCORING_ENABLED", "false"
+    ).strip().lower() == "true"
 
 
 settings = Settings()

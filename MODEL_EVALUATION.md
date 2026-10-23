@@ -18,6 +18,8 @@ I compared it with OpenTextShield, an MIT-licensed multilingual BERT SMS classif
 
 The main model card only specifies 512 characters per request. SMSense therefore classifies longer pasted texts in overlapping 512-character segments and takes the highest segment risk. That is a deliberate recall-first policy; it can increase false positives on long copied conversations and must be measured.
 
+**Similarity is diagnostic-only by default.** The bundled FAISS index contains only a few demonstration examples; its nearest-neighbour signal is recorded for inspection but excluded from the fused risk score while `SIMILARITY_SCORING_ENABLED=false`. Enable it only after a separate, independently labelled and campaign-grouped evaluation demonstrates that it improves results without an unacceptable increase in false alerts. Avoid tuning this setting on the final test set.
+
 ## Optional URL reputation enrichment
 
 The backend can optionally query the Google Safe Browsing Lookup API when `GOOGLE_SAFE_BROWSING_API_KEY` is configured in `artifacts/api-server/.env`. No key is bundled. With no key, URLs remain `not_checked` and the pipeline uses local structural signals only.
