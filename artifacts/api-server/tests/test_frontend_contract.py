@@ -200,4 +200,4 @@ def test_frontend_does_not_mislabel_missing_hosted_configuration_as_local_backen
     assert 'const isFileProtocol = window.location.protocol === "file:";' in source
     assert "if (API_CONFIG_ERROR)" in source
     assert "escapeHtml(API_CONFIG_ERROR)" in source
-    assert "serve the project folder at http://127.0.0.1:5500" in source
+    assert "Serve the project folder at http://127.0.0.1:5500" in source
