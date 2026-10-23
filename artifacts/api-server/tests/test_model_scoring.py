@@ -473,3 +473,30 @@ def test_known_url_reputation_is_exposed_and_affects_fused_score(monkeypatch):
     assert result["url_analysis"]["urls"][0]["threat_types"] == ["SOCIAL_ENGINEERING"]
     assert result["evidence"]["url"] >= 12.0
     assert "url_reputation_not_checked" not in result["decision_diagnostics"]["data_gaps"]
+
+
+
+def test_ollama_runtime_status_does_not_require_optional_models(monkeypatch):
+    requested_urls = []
+
+    class FakeResponse:
+        is_success = True
+        status_code = 200
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def get(self, url):
+            requested_urls.append(url)
+            return FakeResponse()
+
+    monkeypatch.setattr("app.models.httpx.AsyncClient", lambda timeout: FakeClient())
+    available, detail = asyncio.run(OllamaClient().status())
+
+    assert available is True
+    assert "Ollama API is reachable" in detail
+    assert requested_urls == ["http://127.0.0.1:11434/api/tags"]
