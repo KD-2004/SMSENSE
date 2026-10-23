@@ -77,7 +77,7 @@ class AnalysisService:
         except asyncio.TimeoutError as exc:
             raise ModelUnavailableError(
                 "SMS-Shield classification exceeded the configured "
-                f"{settings.classifier_timeout_seconds:.0f}-second deadline. "
+                f"{settings.classifier_timeout_seconds:g}-second deadline. "
                 "Try a shorter message, verify the local Ollama runtime is responsive, "
                 "or increase SMSENSE_CLASSIFIER_TIMEOUT_SECONDS in .env."
             ) from exc
