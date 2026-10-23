@@ -81,9 +81,16 @@ def test_frontend_prevents_overlapping_analysis_and_resets_cleared_selection():
         flags=re.DOTALL,
     )
     assert clear_fn, "Expected a clearAnalyzeForm implementation"
-    assert "currentAnalysis = null;" in clear_fn.group(1)
-    assert "currentAnalysisId = null;" in clear_fn.group(1)
-    assert "renderModels();" in clear_fn.group(1)
+    assert "clearSelectedAnalysisContext();" in clear_fn.group(1)
+    context_fn = re.search(
+        r"function clearSelectedAnalysisContext\(\)\s*\{(.*?)\n\s*\}",
+        source,
+        flags=re.DOTALL,
+    )
+    assert context_fn, "Expected a shared selected-analysis reset function"
+    assert "currentAnalysis = null;" in context_fn.group(1)
+    assert "currentAnalysisId = null;" in context_fn.group(1)
+    assert "renderModels();" in context_fn.group(1)
 
 
 def test_frontend_feedback_requires_a_saved_analysis_id():
