@@ -42,7 +42,7 @@ def test_inline_frontend_javascript_has_valid_syntax():
         pytest.skip("Node.js is unavailable; frontend syntax check skipped")
 
     source = FRONTEND.read_text(encoding="utf-8")
-    scripts = re.findall(r"<script\\b[^>]*>(.*?)</script>", source, flags=re.DOTALL | re.IGNORECASE)
+    scripts = re.findall(r"<script\b[^>]*>(.*?)</script>", source, flags=re.DOTALL | re.IGNORECASE)
     assert scripts, "Expected an inline frontend script"
 
     with tempfile.TemporaryDirectory() as temp_dir:
