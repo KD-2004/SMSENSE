@@ -1,51 +1,61 @@
-# BharatPhish Guard
+# SMSense Developer Guide
 
-FastAPI backend that analyzes suspicious SMS messages with transparent, capped evidence fusion and honest model availability states.
+SMSense is a local-first SMS phishing and scam analysis app. The repository contains a static frontend at the repository root and a FastAPI backend under `artifacts/api-server`.
 
-## Run & Operate
+## Run locally on Windows
 
-- `pnpm --filter @workspace/api-server run dev` — run the FastAPI API server (port 8080)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Python dependencies are listed in `artifacts/api-server/requirements.txt`.
+Install Ollama and pull the primary model once:
 
-## Stack
+```powershell
+ollama run hf.co/ganmoor-ai-labs/sms-shield:Q4_K_M
+```
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Python 3.11+ and FastAPI
-- DB: SQLite (standard library)
-- Optional inference: Hugging Face pretrained models and Ollama Qwen3
-- Optional similarity: FAISS with Qwen3 embeddings
+When the model has downloaded and loaded, enter `/bye` to return to PowerShell.
 
-## Where things live
+In the first terminal, from the repository root:
 
-- `artifacts/api-server/app/main.py` — FastAPI routes and health reporting
-- `artifacts/api-server/app/service.py` — analysis orchestration
-- `artifacts/api-server/app/fusion.py` — transparent rule-based scoring caps
-- `artifacts/api-server/app/storage.py` — SQLite history and feedback
-- `artifacts/api-server/README.md` — API and local setup documentation
+```powershell
+cd artifacts/api-server
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
+python -m uvicorn app.main:app --host 127.0.0.1 --port 4444 --reload
+```
 
-## Architecture decisions
+In a second terminal, from the repository root:
 
-- Model failures are fail-closed: `/api/analyze` returns a clear 503 state rather than fabricating a score.
-- Qwen3 is post-hoc only and cannot change the deterministic score or label.
-- Raw SMS text is preserved exactly; normalization is a separate representation.
+```powershell
+python -m http.server 5500 --bind 127.0.0.1
+```
 
-## Product
+Open `http://127.0.0.1:5500`. The frontend uses `http://127.0.0.1:4444` by default. Confirm the API responds at `http://127.0.0.1:4444/api/healthz`; interactive API documentation is at `http://127.0.0.1:4444/docs`.
 
-The service parses SMS messages, extracts sender and URL evidence, evaluates behavior and obfuscation signals, fuses capped evidence into LOW/SUSPICIOUS/HIGH RISK/CRITICAL labels, stores analysis history, and accepts feedback.
+## Model roles
 
-## User preferences
+- **SMS-Shield 4B through Ollama** is the primary classifier. A missing or invalid primary model response is reported as an error; the backend must not invent a verdict.
+- **Qwen3 chat** generates an optional explanation after the main score has been returned.
+- **Qwen3 embeddings and FAISS** provide optional similarity diagnostics. The bundled demo index is excluded from scoring by default.
+- **IndicBERT** is an optional challenger for diagnostics and evaluation. It is not required for ordinary SMS analysis.
 
-No frontend is included; the API is intended for an existing React/Lovable client.
+See `LOCAL_DEVELOPMENT.md`, `artifacts/api-server/README.md`, and `MODEL_EVALUATION.md` for the complete setup and evaluation workflow.
 
-## Gotchas
+## Tests and checks
 
-- Install Python dependencies from `artifacts/api-server/requirements.txt` before starting the workflow.
-- Optional model packages and model weights are not loaded automatically; configure them explicitly.
+From `artifacts/api-server`, run:
 
-## Pointers
+```powershell
+python -m pytest -q
+```
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+The normal test suite mocks AI inference and does not download models. To run opt-in live integration tests, first ensure the configured local Ollama models are available, then set `RUN_REAL_MODEL_TESTS=true` before running pytest. Qwen explanation and embedding checks are optional; the live SMS-Shield API test exercises the primary analysis response.
+
+From the repository root, `pnpm run typecheck` checks the workspace's TypeScript packages. It does not replace the Python backend tests.
+
+## Hosted frontend and Replit notes
+
+GitHub Pages hosts the static HTML only; it cannot reach Ollama running on a visitor's computer through `127.0.0.1`. For local analysis, run the frontend and backend locally using the ports above. For a hosted frontend, configure `window.SMSENSE_API_BASE` to a deployed HTTPS backend and allow that exact origin in `CORS_ALLOWED_ORIGINS`.
+
+The Replit API artifact has its own service-port configuration in `artifacts/api-server/.replit-artifact/artifact.toml` (currently port 8080 in its deployment configuration). Do not mix that hosted/service port with the local Windows port 4444; verify the runtime's `PORT` setting and frontend API base for the environment being used.
+
+CORS is not authentication. Do not expose the prototype API publicly without appropriate authentication, rate limiting, and network restrictions.
