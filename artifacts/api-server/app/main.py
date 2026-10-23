@@ -444,34 +444,35 @@ async def analyze(
         ) from exc
 
     # --------------------------------------------------------
-    # Store completed analysis
+    # Save history best-effort: storage trouble must not hide a valid score.
     # --------------------------------------------------------
 
+    analysis_id: int | None = None
+    storage_status = {
+        "available": False,
+        "detail": "Analysis completed but history storage has not run",
+    }
     try:
-
-        analysis_id = storage.save_analysis(
-            result
-        )
-
+        analysis_id = storage.save_analysis(result)
+        storage_status = {
+            "available": True,
+            "detail": "Analysis saved to local history",
+        }
     except Exception as exc:
-
         logger.exception(
-            "Failed to save analysis"
+            "Analysis completed but could not be saved to history; returning the result"
         )
-
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "code": "STORAGE_ERROR",
-                "message": (
-                    "Analysis completed but could not "
-                    "be stored in history."
-                ),
-            },
-        ) from exc
+        storage_status = {
+            "available": False,
+            "detail": (
+                "Analysis completed, but it could not be saved to history "
+                f"({type(exc).__name__}). This result will not appear in history."
+            ),
+        }
 
     return AnalysisResponse(
         id=analysis_id,
+        storage_status=storage_status,
         **result,
     )
 
