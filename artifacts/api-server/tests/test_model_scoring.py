@@ -96,6 +96,63 @@ def test_sms_shield_accepts_json_wrapped_after_a_short_preamble():
     assert result["verdict"] == "suspicious"
 
 
+def test_sms_shield_disables_thinking_and_retries_empty_json_content(monkeypatch):
+    requests = []
+
+    class FakeResponse:
+        is_success = True
+        status_code = 200
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json):
+            requests.append((url, json))
+            if len(requests) == 1:
+                return FakeResponse({
+                    "message": {
+                        "content": "",
+                        "thinking": "The message says to verify account details.",
+                    }
+                })
+            return FakeResponse({
+                "message": {
+                    "content": __import__("json").dumps({
+                        "verdict": "dangerous",
+                        "category": "phishing",
+                        "scam_type": "credential_theft",
+                        "risk": 86,
+                        "red_flags": ["account threat", "credential request"],
+                        "explanation": "The message asks for sensitive account details.",
+                    })
+                }
+            })
+
+    monkeypatch.setattr("app.models.httpx.AsyncClient", lambda timeout: FakeClient())
+    result = asyncio.run(SmsShieldClient()._classify_segment(
+        "Your account will be blocked. Submit your credentials.",
+        "BANKALERT",
+    ))
+
+    assert len(requests) == 2
+    assert requests[0][1]["think"] is False
+    assert requests[0][1]["format"] == "json"
+    assert requests[1][1]["think"] is False
+    assert "format" not in requests[1][1]
+    assert result["risk"] == 86
+    assert result["verdict"] == "dangerous"
+
+
 def test_long_message_is_split_into_overlapping_segments_with_full_coverage():
     message = "A" * 1300
     segments = SmsShieldClient._segments(message)
