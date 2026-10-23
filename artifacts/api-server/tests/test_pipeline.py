@@ -136,3 +136,69 @@ def test_explicit_conflicting_brand_names_in_message_and_host_are_flagged():
 
     assert item["brand_domain_mismatch"] is True
     assert item["mismatched_brands"] == ["sbi"]
+
+def test_slow_optional_similarity_does_not_block_primary_result(monkeypatch):
+    import asyncio
+    from dataclasses import replace
+
+    import app.service as service_module
+    from app.service import AnalysisService
+
+    monkeypatch.setattr(
+        service_module,
+        "settings",
+        replace(
+            service_module.settings,
+            similarity_timeout_seconds=0.01,
+            url_reputation_timeout_seconds=0.1,
+        ),
+    )
+    service = AnalysisService()
+
+    async def fake_classify(message, sender):
+        return {
+            "model": "SMS-Shield",
+            "model_id": "test-model",
+            "risk": 15,
+            "verdict": "safe",
+            "model_verdict": "safe",
+            "verdict_supported": True,
+            "verdict_consistent": True,
+            "category": "personal",
+            "scam_type": None,
+            "red_flags": [],
+            "explanation": "An ordinary personal message.",
+            "segments_analyzed": 1,
+            "aggregation": "single_message",
+            "segment_risks": [15],
+        }
+
+    async def no_url_lookup(urls):
+        return []
+
+    async def slow_similarity(raw, normalized, ollama):
+        await asyncio.sleep(0.05)
+        return {
+            "available": True,
+            "matches": [],
+            "top_distance": None,
+            "similarity_signal": 0.0,
+            "detail": "test",
+        }
+
+    async def no_challenger(message):
+        return None
+
+    monkeypatch.setattr(service.sms_shield, "classify", fake_classify)
+    monkeypatch.setattr(service.url_reputation, "check_urls", no_url_lookup)
+    monkeypatch.setattr(service.similarity, "search", slow_similarity)
+    monkeypatch.setattr(service.hf, "challenger_signal", no_challenger)
+
+    result = asyncio.run(
+        service.analyze("Just saying hello.", None, post_hoc=False)
+    )
+
+    assert result["model_assessment"]["risk"] == 15
+    assert result["similarity"]["available"] is False
+    assert "timed out" in result["similarity"]["detail"]
+
