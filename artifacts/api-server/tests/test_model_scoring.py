@@ -234,6 +234,28 @@ def test_optional_indicbert_is_diagnostic_only(monkeypatch):
     assert "excluded from fused scoring" in signal.detail
 
 
+def test_indicbert_health_does_not_trigger_model_download(monkeypatch):
+    from dataclasses import replace
+    import app.models as models
+
+    monkeypatch.setattr(
+        models,
+        "settings",
+        replace(models.settings, indicbert_enabled=True),
+    )
+    detector = HuggingFaceModels()
+    monkeypatch.setattr(detector, "package_status", lambda: (True, "test packages present"))
+
+    def must_not_load(*args, **kwargs):
+        raise AssertionError("health checks must not download or load model weights")
+
+    monkeypatch.setattr(detector, "_load", must_not_load)
+    status = asyncio.run(detector.detailed_status())
+
+    assert status["indicbert"][0] is False
+    assert "Health checks do not download model weights" in status["indicbert"][1]
+
+
 def test_ollama_explainer_disables_thinking_and_retries_without_json_mode(monkeypatch):
     requests = []
 
