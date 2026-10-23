@@ -1649,6 +1649,7 @@
 
         function updateLastAnalysisTime() {
             const el = document.getElementById('lastAnalysisTime');
+            if (!el) return;
             if (lastAnalysisTimestamp) {
                 el.textContent = `Last analysis: ${lastAnalysisTimestamp.toLocaleTimeString()}`;
             } else {
@@ -2030,6 +2031,10 @@
                 updateLastAnalysisTime();
                 const detailContainer = document.getElementById('historyDetailContainer');
                 renderAnalysisResult(analysis, detailContainer);
+                // Primary analyses are stored before the optional explanation is requested.
+                // Load that explanation here too, otherwise history details stay in a
+                // permanent "Generating..." state even though the primary result exists.
+                if (!analysis.post_hoc?.summary) loadPostHocExplanation(analysis);
                 detailContainer.scrollIntoView({ behavior: 'smooth' });
                 renderURIIntel();
                 renderModels();
