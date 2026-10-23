@@ -29,7 +29,7 @@ def test_frontend_displays_sms_shield_primary_assessment():
 
 def test_frontend_shows_core_result_before_optional_explanation():
     source = FRONTEND.read_text(encoding="utf-8")
-    assert "loadPostHocExplanation(result);" in source
+    assert "loadPostHocExplanation(result, resultContainer);" in source
     assert "apiRequest('/api/explain'" in source
     assert "currentAnalysis !== result" in source
     assert "Generating the optional explanation separately" in source
@@ -234,3 +234,18 @@ def test_frontend_resets_previous_result_before_new_analysis_or_history_selectio
     history_end = source.index("// ==================== URL INTEL VIEW", history_start)
     history_source = source[history_start:history_end]
     assert history_source.index("clearSelectedAnalysisContext();") < history_source.index("currentAnalysis = analysis;")
+
+
+
+def test_post_hoc_explanation_updates_the_container_for_the_matching_analysis():
+    source = FRONTEND.read_text(encoding="utf-8")
+    assert "loadPostHocExplanation(analysis, detailContainer);" in source
+
+    renderer_start = source.index("function renderPostHocExplanation(explanation, resultContainer)")
+    renderer_end = source.index("function renderEvidenceBars", renderer_start)
+    renderer = source[renderer_start:renderer_end]
+    assert "resultContainer?.querySelector('#postHocStatus')" in renderer
+    assert "resultContainer?.querySelector('#postHocSummary')" in renderer
+    assert "resultContainer?.querySelector('#postHocPhrases')" in renderer
+    assert "resultContainer?.querySelector('#postHocAction')" in renderer
+    assert "document.getElementById('postHocStatus')" not in renderer
