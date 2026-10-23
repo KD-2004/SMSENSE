@@ -529,6 +529,7 @@ class HuggingFaceModels:
             )
 
     async def detailed_status(self) -> dict[str, tuple[bool, str]]:
+        """Inspect challenger readiness without downloading weights on a health request."""
         if not settings.indicbert_enabled:
             return {
                 "indicbert": (
@@ -540,14 +541,22 @@ class HuggingFaceModels:
         if not package_ok:
             return {"indicbert": (False, package_detail)}
 
-        def load_model() -> tuple[bool, str]:
-            try:
-                self._load("indicbert", settings.indicbert_model)
-                return True, f"{settings.indicbert_model} loaded successfully (diagnostic only)"
-            except ModelUnavailableError as exc:
-                return False, str(exc)
+        if "indicbert" in self._pipelines:
+            return {
+                "indicbert": (
+                    True,
+                    f"{settings.indicbert_model} is already loaded (diagnostic only)",
+                )
+            }
 
-        return {"indicbert": await asyncio.to_thread(load_model)}
+        return {
+            "indicbert": (
+                False,
+                f"{settings.indicbert_model} is enabled but not loaded yet. "
+                "Health checks do not download model weights; the optional "
+                "challenger loads only when explicitly used for analysis/benchmarking.",
+            )
+        }
 
     def _load(self, name: str, model_id: str) -> Any:
         if name not in self._pipelines:
