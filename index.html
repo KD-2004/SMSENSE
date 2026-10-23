@@ -1282,8 +1282,11 @@
 
             } catch (error) {
                 if (error.name === 'AbortError') {
+                    const timeoutLabel = timeoutMs >= 60000
+                        ? `${Math.ceil(timeoutMs / 60000)} minute${Math.ceil(timeoutMs / 60000) === 1 ? '' : 's'}`
+                        : `${Math.ceil(timeoutMs / 1000)} second${Math.ceil(timeoutMs / 1000) === 1 ? '' : 's'}`;
                     throw new Error(
-                        `Request timed out after ${Math.round(timeoutMs / 60000)} minutes. Check the backend terminal for the exact inference or model timeout.`
+                        `Request timed out after ${timeoutLabel}. Check the backend terminal for the exact inference or model timeout.`
                     );
                 }
                 if (error instanceof TypeError) {
