@@ -1,5 +1,6 @@
-from typing import Any
+import asyncio
 import logging
+from typing import Any
 
 from .config import settings
 from .fusion import fuse
@@ -37,7 +38,10 @@ class AnalysisService:
         # Provider errors leave reputation as not_checked and never block analysis.
         url_analysis = url_signals(parsed)
         try:
-            reputation_results = await self.url_reputation.check_urls(parsed.urls)
+            reputation_results = await asyncio.wait_for(
+                self.url_reputation.check_urls(parsed.urls),
+                timeout=settings.url_reputation_timeout_seconds,
+            )
             reputation_by_url = {
                 str(item.get("url")): item
                 for item in reputation_results
@@ -92,12 +96,33 @@ class AnalysisService:
         similarity_result: dict[str, Any]
         similarity_signal = 0.0
         try:
-            similarity_result = await self.similarity.search(
-                parsed.raw, normalized.normalized, self.ollama
+            # Similarity is optional evidence. Bound it so a missing/slow
+            # embedding model cannot hide a completed SMS-Shield prediction.
+            similarity_result = await asyncio.wait_for(
+                self.similarity.search(
+                    parsed.raw, normalized.normalized, self.ollama
+                ),
+                timeout=settings.similarity_timeout_seconds,
             )
             similarity_signal = float(
                 similarity_result.get("similarity_signal", 0.0) or 0.0
             )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Optional similarity enrichment timed out after %.1f seconds; continuing without it",
+                settings.similarity_timeout_seconds,
+            )
+            similarity_result = {
+                "available": False,
+                "matches": [],
+                "top_distance": None,
+                "similarity_signal": 0.0,
+                "detail": (
+                    "Optional semantic similarity timed out after "
+                    f"{settings.similarity_timeout_seconds:.1f} seconds; "
+                    "the primary SMS analysis continued without it"
+                ),
+            }
         except ModelUnavailableError as exc:
             similarity_result = {
                 "available": False,
@@ -105,6 +130,21 @@ class AnalysisService:
                 "top_distance": None,
                 "similarity_signal": 0.0,
                 "detail": str(exc),
+            }
+        except Exception as exc:
+            logger.warning(
+                "Optional similarity enrichment failed (%s); continuing without it",
+                type(exc).__name__,
+            )
+            similarity_result = {
+                "available": False,
+                "matches": [],
+                "top_distance": None,
+                "similarity_signal": 0.0,
+                "detail": (
+                    "Optional semantic similarity unavailable "
+                    f"({type(exc).__name__}); the primary SMS analysis continued"
+                ),
             }
 
         result = fuse(
