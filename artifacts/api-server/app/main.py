@@ -14,6 +14,8 @@ from .schemas import (
     AdversarialResponse,
     AnalysisResponse,
     AnalyzeRequest,
+    ExplainRequest,
+    ExplanationResponse,
     FeedbackRequest,
     HealthResponse,
 )
@@ -395,11 +397,14 @@ async def analyze(
 
     try:
 
+        # Return the primary classification first. The UI requests the optional
+        # Qwen explanation separately so slow/empty explainer output cannot hide
+        # a completed SMS-Shield result.
         result = await service.analyze(
             request.message,
             request.sender,
             request.timestamp,
-            post_hoc=True,
+            post_hoc=False,
         )
 
     except ModelUnavailableError as exc:
@@ -469,6 +474,53 @@ async def analyze(
         id=analysis_id,
         **result,
     )
+
+
+
+@app.post("/api/explain", response_model=ExplanationResponse)
+async def explain(request: ExplainRequest) -> ExplanationResponse:
+    """Generate an optional explanation after the primary result is already visible."""
+    payload = {
+        "final_score": request.risk_score,
+        "final_label": request.label,
+        "category": request.category,
+        "top_evidence": request.top_evidence,
+        "raw_message": request.raw_message,
+        "normalized_message": request.normalized_message,
+        "suspicious_phrases": request.suspicious_phrases,
+    }
+    try:
+        explanation = await service.ollama.explain(payload)
+        return ExplanationResponse(
+            summary=explanation["summary"],
+            suspicious_phrases=explanation.get(
+                "suspicious_phrases", request.suspicious_phrases
+            ),
+            recommended_action=explanation["recommended_action"],
+            available=True,
+            detail="Optional Qwen explanation generated",
+        )
+    except Exception as exc:
+        # Do not turn an explanation-provider outage into an analysis outage.
+        logger.warning(
+            "Optional explanation endpoint unavailable (%s)",
+            type(exc).__name__,
+        )
+        return ExplanationResponse(
+            summary=(
+                "The optional AI explanation is unavailable. "
+                "The risk score and verdict above were already produced by "
+                "the primary detection pipeline."
+            ),
+            suspicious_phrases=request.suspicious_phrases[:10],
+            recommended_action=(
+                "Verify the sender independently. Do not open unexpected links "
+                "or share OTPs, PINs, passwords, or payment details until the "
+                "message is verified through an official channel."
+            ),
+            available=False,
+            detail=f"Optional explanation unavailable ({type(exc).__name__})",
+        )
 
 
 # ============================================================
