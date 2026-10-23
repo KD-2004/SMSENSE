@@ -63,6 +63,9 @@ class Settings:
     classifier_timeout_seconds: float = max(
         1.0, float(os.getenv("SMSENSE_CLASSIFIER_TIMEOUT_SECONDS", "300.0"))
     )
+    challenger_timeout_seconds: float = max(
+        0.1, float(os.getenv("SMSENSE_CHALLENGER_TIMEOUT_SECONDS", "2.0"))
+    )
 
 
 settings = Settings()
