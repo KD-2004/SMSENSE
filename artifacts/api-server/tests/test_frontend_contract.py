@@ -12,7 +12,7 @@ def test_frontend_defaults_to_local_api_but_explains_github_pages_configuration(
     assert "isHostedGitHubPages" in source
     assert "API_CONFIG_ERROR" in source
     assert "cannot reach Ollama on your computer through localhost" in source
-    assert r'.replace(/\\/+$/, "")' in source
+    assert r'.replace(/\/+$/, "")' in source
     assert "ngrok-free" not in source
 
 
