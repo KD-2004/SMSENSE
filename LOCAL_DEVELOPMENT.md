@@ -48,6 +48,8 @@ The analysis result is shown as soon as the primary SMS-Shield inference and bou
 - The local backend allows cross-origin requests for development. Restrict CORS and add authentication before exposing it beyond localhost.
 - SMS-Shield must be installed in Ollama. The optional IndicBERT challenger requires `python -m pip install -r artifacts/api-server/requirements-optional-ml.txt` plus `INDICBERT_ENABLED=true`.
 - Optional semantic similarity waits up to `SMSENSE_SIMILARITY_TIMEOUT_SECONDS` (3 seconds by default); after that, the core result is returned without similarity evidence.
+- The primary classifier has a 600-second overall deadline by default (`SMSENSE_CLASSIFIER_TIMEOUT_SECONDS`). Raise it in `.env` for slower hardware or very long messages; timeouts return an explicit API error rather than hanging indefinitely.
+- The optional IndicBERT diagnostic is bounded by `SMSENSE_CHALLENGER_TIMEOUT_SECONDS` (2 seconds by default) and cannot change the fused risk score.
 - URL reputation enrichment waits up to `SMSENSE_URL_REPUTATION_TIMEOUT_SECONDS` (4 seconds by default); URL lookup failure does not discard the model result.
 - FAISS similarity uses a three-example demo index by default. It should not be treated as a reliable classifier until a larger labelled corpus is tested.
 - Run backend unit tests in the server environment with `python -m pytest -q`.
