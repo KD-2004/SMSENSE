@@ -87,6 +87,37 @@ def test_analyze_endpoint_preserves_schema_fields(monkeypatch):
     assert post_hoc_flags == [False]
 
 
+def test_analysis_result_is_returned_when_history_storage_fails(monkeypatch):
+    async def fake_analyze(message, sender, timestamp, post_hoc):
+        assert post_hoc is False
+        return _analysis_result(message, sender)
+
+    def fail_save(_result):
+        raise OSError("test database is read-only")
+
+    monkeypatch.setattr(api.service, "analyze", fake_analyze)
+    monkeypatch.setattr(api.storage, "save_analysis", fail_save)
+
+    async def request():
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=api.app),
+            base_url="http://testserver",
+        ) as client:
+            return await client.post(
+                "/api/analyze",
+                json={"message": "Your appointment is confirmed."},
+            )
+
+    response = asyncio.run(request())
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["risk_score"] == 12
+    assert body["label"] == "LOW"
+    assert body["id"] is None
+    assert body["storage_status"]["available"] is False
+    assert "will not appear in history" in body["storage_status"]["detail"]
+
+
 def test_explain_endpoint_returns_optional_model_result(monkeypatch):
     async def fake_explain(payload):
         assert payload["final_score"] == 82
