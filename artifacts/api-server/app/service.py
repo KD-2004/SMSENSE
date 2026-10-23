@@ -212,6 +212,11 @@ class AnalysisService:
             similarity_signal=similarity_fusion_signal,
             url_analysis=url_analysis,
         )
+        # Record the evidence actually used by fusion, which can be lower than
+        # the raw retrieval signal when independent evidence is absent.
+        similarity_result["score_contribution"] = float(
+            result.evidence.get("similarity", 0.0) or 0.0
+        )
         model_risk = int(model_assessment.get("risk", 0) or 0)
         model_verdict = str(model_assessment.get("verdict", "unknown"))
         verdict_supported = bool(model_assessment.get("verdict_supported", True))
