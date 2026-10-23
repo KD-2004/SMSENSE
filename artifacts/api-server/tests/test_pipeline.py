@@ -172,6 +172,8 @@ def test_combination_rule_is_stronger_than_single_keyword():
 
 def test_credential_safety_warning_is_not_a_request():
     assert not _credential_request("Never share your OTP with anyone.")
+    assert not _credential_request("Don’t share your OTP with anyone.")
+    assert not _credential_request("Don‘t share your PIN.")
     assert not _credential_request("OTP mat bhejo")
 
 
