@@ -2112,7 +2112,13 @@
             const container = document.getElementById('feedbackAnalysisInfo');
             const submitButton = document.getElementById('submitFeedbackBtn');
             const hasSavedAnalysis = Number.isInteger(Number(currentAnalysisId)) && Number(currentAnalysisId) > 0;
-            if (submitButton) submitButton.disabled = !currentAnalysis || !hasSavedAnalysis;
+            const choicesEnabled = Boolean(currentAnalysis && hasSavedAnalysis);
+            const correctButton = document.getElementById('btnCorrect');
+            const incorrectButton = document.getElementById('btnIncorrect');
+            if (correctButton) correctButton.disabled = !choicesEnabled;
+            if (incorrectButton) incorrectButton.disabled = !choicesEnabled;
+            if (!choicesEnabled) feedbackHelpful = null;
+            if (submitButton) submitButton.disabled = !choicesEnabled || feedbackHelpful === null;
 
             if (currentAnalysis) {
                 const labelClass = getRiskLabelClass(currentAnalysis.label || Number(currentAnalysis.risk_score || 0));
@@ -2130,6 +2136,16 @@
         }
 
         function setFeedback(helpful, button) {
+            const hasSavedAnalysis = Boolean(
+                currentAnalysis &&
+                Number.isInteger(Number(currentAnalysisId)) &&
+                Number(currentAnalysisId) > 0
+            );
+            if (!hasSavedAnalysis) {
+                feedbackHelpful = null;
+                renderFeedbackInfo();
+                return;
+            }
             feedbackHelpful = helpful;
             document.querySelectorAll('#view-feedback .btn-secondary').forEach(btn => {
                 btn.classList.remove('active');
@@ -2141,6 +2157,7 @@
             button.style.background = 'var(--accent-grad)';
             button.style.color = '#fff';
             button.style.borderColor = 'transparent';
+            renderFeedbackInfo();
         }
 
         async function submitFeedback() {
@@ -2166,6 +2183,7 @@
                     btn.style.color = '';
                     btn.style.borderColor = '';
                 });
+                renderFeedbackInfo();
             } catch (error) {
                 document.getElementById('feedbackResult').innerHTML = `<div class="alert">${escapeHtml(error.message)}</div>`;
             }
