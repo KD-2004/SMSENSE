@@ -202,3 +202,40 @@ def test_slow_optional_similarity_does_not_block_primary_result(monkeypatch):
     assert result["similarity"]["available"] is False
     assert "timed out" in result["similarity"]["detail"]
 
+def test_primary_classifier_timeout_returns_actionable_model_error(monkeypatch):
+    import asyncio
+    from dataclasses import replace
+
+    import app.service as service_module
+    from app.models import ModelUnavailableError
+    from app.service import AnalysisService
+
+    monkeypatch.setattr(
+        service_module,
+        "settings",
+        replace(
+            service_module.settings,
+            classifier_timeout_seconds=0.01,
+            url_reputation_timeout_seconds=0.1,
+        ),
+    )
+    service = AnalysisService()
+
+    async def no_url_lookup(urls):
+        return []
+
+    async def slow_classify(message, sender):
+        await asyncio.sleep(0.05)
+        return {}
+
+    monkeypatch.setattr(service.url_reputation, "check_urls", no_url_lookup)
+    monkeypatch.setattr(service.sms_shield, "classify", slow_classify)
+
+    try:
+        asyncio.run(service.analyze("A short sample SMS.", None, post_hoc=False))
+    except ModelUnavailableError as exc:
+        assert "configured 0-second deadline" not in str(exc)
+        assert "configured" in str(exc) and "deadline" in str(exc)
+    else:
+        raise AssertionError("A timed-out primary classifier must not return a fabricated result")
+
