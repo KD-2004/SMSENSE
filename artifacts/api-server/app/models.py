@@ -58,9 +58,18 @@ class OllamaClient:
             return False, f"Ollama unavailable while checking {model_name}: {type(exc).__name__}"
 
     async def status(self) -> tuple[bool, str]:
-        chat_ok, chat_detail = await self.model_status(settings.ollama_chat_model)
-        embedding_ok, embedding_detail = await self.model_status(settings.ollama_embedding_model)
-        return chat_ok and embedding_ok, f"chat={chat_detail}; embedding={embedding_detail}"
+        """Report Ollama runtime reachability separately from optional model readiness."""
+        try:
+            async with httpx.AsyncClient(timeout=2) as client:
+                response = await client.get(f"{self.base_url}/api/tags")
+            if not response.is_success:
+                return False, f"Ollama returned HTTP {response.status_code}"
+            return True, (
+                "Ollama API is reachable. Readiness for the optional chat/embedding "
+                "models and primary SMS-Shield classifier is reported separately."
+            )
+        except Exception as exc:
+            return False, f"Ollama runtime unavailable: {type(exc).__name__}"
 
     async def embed(self, prompt: str) -> list[float]:
         try:
