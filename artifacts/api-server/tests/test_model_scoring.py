@@ -500,3 +500,57 @@ def test_ollama_runtime_status_does_not_require_optional_models(monkeypatch):
     assert available is True
     assert "Ollama API is reachable" in detail
     assert requested_urls == ["http://127.0.0.1:11434/api/tags"]
+
+
+
+def test_sms_shield_http_timeout_uses_configured_classifier_deadline(monkeypatch):
+    import json
+    from dataclasses import replace
+
+    import app.models as models
+
+    configured = replace(models.settings, classifier_timeout_seconds=421.0)
+    monkeypatch.setattr(models, "settings", configured)
+    observed_timeouts = []
+
+    class FakeResponse:
+        is_success = True
+        status_code = 200
+
+        def json(self):
+            return {
+                "message": {
+                    "content": json.dumps({
+                        "verdict": "dangerous",
+                        "risk": 86,
+                        "category": "phishing",
+                        "scam_type": "credential_theft",
+                        "red_flags": ["credential request"],
+                        "explanation": "Requests sensitive credentials.",
+                    })
+                }
+            }
+
+    class FakeClient:
+        def __init__(self, timeout):
+            observed_timeouts.append(timeout)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, json):
+            return FakeResponse()
+
+    monkeypatch.setattr(models.httpx, "AsyncClient", FakeClient)
+    result = asyncio.run(models.SmsShieldClient()._classify_segment(
+        "Please send your PIN to verify your account.",
+        "BANKALERT",
+    ))
+
+    assert result["risk"] == 86
+    assert len(observed_timeouts) == 1
+    assert observed_timeouts[0].read == 421.0
+    assert observed_timeouts[0].connect == 10.0
