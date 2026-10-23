@@ -41,13 +41,14 @@ CORS_ALLOWED_ORIGINS=http://127.0.0.1:5500,http://localhost:5500
 
 Only URL strings are sent to the provider, not the SMS body or sender. URLs can themselves contain tracking identifiers or sensitive query parameters, so enable this feature only when that disclosure is acceptable. The checker does not follow redirects or visit the destination. A reputation result of `malicious` adds bounded URL evidence; `no_match` means only that the provider returned no threat-list match at the time of lookup, not that the URL is guaranteed safe. Missing keys, provider errors and rate/limit conditions remain `not_checked` and do not fail the primary analysis.
 
-The client checks at most 10 unique URLs per message, limits concurrent requests, caches successful answers for one hour, and uses a five-second per-request timeout. This optional enrichment does not replace safe browsing behavior or independently verified evaluation.
+The client checks at most 10 unique URLs per message, limits concurrent requests, caches successful answers for one hour, and uses a five-second per-request timeout. This optional enrichment does not replace safe browsing behavior or independently verified evaluation. The overall URL enrichment step is bounded by `SMSENSE_URL_REPUTATION_TIMEOUT_SECONDS` (4 seconds by default).
 
 ## API endpoints
 
 - `GET /api/healthz`: quick reachability check.
 - `GET /api/health`: component readiness.
-- `POST /api/analyze`: analyse one message and save it to local SQLite history.
+- `POST /api/analyze`: analyse one message and save it to local SQLite history; returns the primary result without waiting for Qwen explanation.
+- `POST /api/explain`: generate an optional post-hoc narrative separately; returns fallback safety guidance if Qwen is unavailable.
 - `POST /api/adversarial-test`: bounded multi-message analysis without normal history writes.
 
 OpenAPI is available at `/docs`.
@@ -56,7 +57,7 @@ OpenAPI is available at `/docs`.
 
 The primary text detector is **SMS-Shield** (`hf.co/ganmoor-ai-labs/sms-shield:Q4_K_M`), an Indian SMS scam/inbox model fine-tuned from Qwen3-4B and available as a quantized Ollama model. Its structured verdict, risk band, scam type, and red flags are returned in `model_assessment`. For messages longer than 512 characters, the backend evaluates overlapping segments and uses the highest risk segment; this is intentionally recall-oriented and should be measured for false positives.
 
-Qwen3 remains an optional post-hoc explainer and embedding provider. The explainer explicitly disables thinking mode for its final JSON response and retries once without Ollama's constrained JSON mode if the model returns empty or unusable content. An explanation failure never changes or discards the fused score and label. FAISS similarity is supporting evidence, not a phishing probability. The optional IndicBERT challenger is disabled by default and never affects production scoring; install `requirements-optional-ml.txt` before enabling it. See [MODEL_EVALUATION.md](../../MODEL_EVALUATION.md) for model-card caveats and the labelled benchmark workflow.
+Qwen3 remains an optional post-hoc explainer and embedding provider. Both the primary SMS-Shield request and explainer explicitly disable Ollama thinking mode for structured results. The primary classifier retries once without `format=json` if constrained output is empty or invalid. The API returns the fused score first; the UI requests explanation from `/api/explain` separately, where failures return fallback guidance. Similarity and URL reputation enrichment have short configurable time budgets and cannot indefinitely delay the primary result. FAISS similarity is supporting evidence, not a phishing probability. The optional IndicBERT challenger is disabled by default and never affects production scoring; install `requirements-optional-ml.txt` before enabling it. See [MODEL_EVALUATION.md](../../MODEL_EVALUATION.md) for model-card caveats and the labelled benchmark workflow.
 
 ## Optional multilingual challenger
 
