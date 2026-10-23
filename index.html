@@ -1632,7 +1632,7 @@
                 renderAnalysisResult(result, resultContainer);
                 // The risk score is already rendered. Ask for optional narrative
                 // separately so Qwen latency cannot hold the primary result hostage.
-                loadPostHocExplanation(result);
+                loadPostHocExplanation(result, resultContainer);
                 resultContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 loadDashboard().catch(console.error);
                 renderURIIntel();
@@ -1787,7 +1787,8 @@
             container.innerHTML = html;
         }
 
-        async function loadPostHocExplanation(result) {
+        async function loadPostHocExplanation(result, resultContainer) {
+            if (!resultContainer) return;
             try {
                 const explanation = await apiRequest('/api/explain', {
                     method: 'POST',
@@ -1806,7 +1807,7 @@
 
                 // Do not let a slow response for an older SMS overwrite a newer one.
                 if (currentAnalysis !== result) return;
-                renderPostHocExplanation(explanation);
+                renderPostHocExplanation(explanation, resultContainer);
             } catch (error) {
                 if (currentAnalysis !== result) return;
                 renderPostHocExplanation({
@@ -1815,15 +1816,18 @@
                     summary: 'The optional AI explanation could not be loaded. The primary risk result above is still available.',
                     suspicious_phrases: result.suspicious_phrases || [],
                     recommended_action: 'Verify the sender independently. Do not open unexpected links or share OTPs, PINs, passwords, or payment details until the message is verified through an official channel.'
-                });
+                }, resultContainer);
             }
         }
 
-        function renderPostHocExplanation(explanation) {
-            const status = document.getElementById('postHocStatus');
-            const summary = document.getElementById('postHocSummary');
-            const phrases = document.getElementById('postHocPhrases');
-            const action = document.getElementById('postHocAction');
+        function renderPostHocExplanation(explanation, resultContainer) {
+            // Both the analysis view and history-detail view can be in the DOM at
+            // the same time, each with the same local explanation element IDs.
+            // Always update the container whose request produced this response.
+            const status = resultContainer?.querySelector('#postHocStatus');
+            const summary = resultContainer?.querySelector('#postHocSummary');
+            const phrases = resultContainer?.querySelector('#postHocPhrases');
+            const action = resultContainer?.querySelector('#postHocAction');
             if (!status || !summary || !phrases || !action) return;
 
             status.textContent = explanation.available
@@ -2046,7 +2050,7 @@
                 // Primary analyses are stored before the optional explanation is requested.
                 // Load that explanation here too, otherwise history details stay in a
                 // permanent "Generating..." state even though the primary result exists.
-                if (!analysis.post_hoc?.summary) loadPostHocExplanation(analysis);
+                if (!analysis.post_hoc?.summary) loadPostHocExplanation(analysis, detailContainer);
                 detailContainer.scrollIntoView({ behavior: 'smooth' });
                 renderURIIntel();
                 renderModels();
