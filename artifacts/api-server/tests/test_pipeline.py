@@ -234,8 +234,7 @@ def test_primary_classifier_timeout_returns_actionable_model_error(monkeypatch):
     try:
         asyncio.run(service.analyze("A short sample SMS.", None, post_hoc=False))
     except ModelUnavailableError as exc:
-        assert "configured 0-second deadline" not in str(exc)
-        assert "configured" in str(exc) and "deadline" in str(exc)
+        assert "0.01-second deadline" in str(exc)
     else:
         raise AssertionError("A timed-out primary classifier must not return a fabricated result")
 
